@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 require_login();
+$currentLang = $_SESSION['lang'] ?? 'en';
 
 // Fallback session data
 $userFirstName = $_SESSION['user_first_name'] ?? 'Alex';
@@ -9,7 +10,7 @@ $userEmail = $_SESSION['user_email'] ?? 'alex@university.edu';
 $userName = $userFirstName . ' ' . $userLastName;
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo htmlspecialchars($currentLang); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -19,9 +20,13 @@ $userName = $userFirstName . ' ' . $userLastName;
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
         body {
             background-color: #f8fafc;
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        html[lang="kh"] body {
+            font-family: 'Noto Sans Khmer', 'Inter', system-ui, -apple-system, sans-serif;
         }
         .sidebar {
             width: 240px;

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 require_login();
+$currentLang = $_SESSION['lang'] ?? 'en';
 
 $userId = (int) $_SESSION['user_id'];
 $userName = $_SESSION['user_name'] ?? 'User';
@@ -118,14 +119,16 @@ $plannerRows = $conn->query("
 $allSubjects = $conn->query("SELECT id, name FROM subjects WHERE user_id = {$userId} ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo htmlspecialchars($currentLang); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f8fafc; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
+        body { background: #f8fafc; font-family: 'Inter', sans-serif; }
+        html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
         .soft-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.03); }
     </style>
 </head>
@@ -236,6 +239,40 @@ $allSubjects = $conn->query("SELECT id, name FROM subjects WHERE user_id = {$use
 
    <!-- Overview Lists Section -->
     <div class="row g-3">
+         <!-- Planner List -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
+                <div class="card-header bg-white border-bottom border-light py-3 px-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-semibold text-secondary text-uppercase extra-small tracking-wider">Planner Items</h6>
+                    <span class="badge bg-light text-secondary border fw-normal px-2 py-1"><?= count($plannerRows) ?> total</span>
+                </div>
+                <ul class="list-group list-group-flush small">
+                    <?php foreach ($plannerRows as $p): ?>
+                        <li class="list-group-item border-light px-3 py-2.5 d-flex justify-content-between align-items-center">
+                            <div class="me-2 text-truncate">
+                                <span class="fw-medium text-dark d-block text-truncate"><?= htmlspecialchars($p['subject_name']) ?> &bull; <span class="fw-normal text-muted"><?= htmlspecialchars($p['topic']) ?></span></span>
+                                <span class="text-muted extra-small d-block"><?= htmlspecialchars($p['study_date'] . ' [' . $p['start_time'] . ' - ' . $p['end_time'] . ']') ?></span>
+                            </div>
+                            <form method="post" onsubmit="return confirm('Delete?');" class="flex-shrink-0">
+                                <input type="hidden" name="action" value="delete_planner">
+                                <input type="hidden" name="id" value="<?= $p['id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger border-1 px-2 py-0.5 rounded-2 extra-small fw-medium d-inline-flex align-items-center gap-1 shadow-none" title="Delete">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                </svg>
+                                <span>Delete</span>
+                            </button>
+                            </form>
+                        </li>
+                    <?php endforeach; ?>
+                    <?php if (!$plannerRows): ?>
+                        <li class="list-group-item text-center text-muted py-4 extra-small">No planner items added.</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+        </div>
+
         
         <!-- Subjects List -->
         <div class="col-md-6">
@@ -273,7 +310,10 @@ $allSubjects = $conn->query("SELECT id, name FROM subjects WHERE user_id = {$use
             </div>
         </div>
 
-        <!-- Goals List -->
+       
+
+       
+         <!-- Goals List -->
         <div class="col-md-6">
             <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
                 <div class="card-header bg-white border-bottom border-light py-3 px-3 d-flex justify-content-between align-items-center">
@@ -304,40 +344,6 @@ $allSubjects = $conn->query("SELECT id, name FROM subjects WHERE user_id = {$use
                     <?php endforeach; ?>
                     <?php if (!$goals): ?>
                         <li class="list-group-item text-center text-muted py-4 extra-small">No goals added.</li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-
-        <!-- Planner List -->
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
-                <div class="card-header bg-white border-bottom border-light py-3 px-3 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 fw-semibold text-secondary text-uppercase extra-small tracking-wider">Planner Items</h6>
-                    <span class="badge bg-light text-secondary border fw-normal px-2 py-1"><?= count($plannerRows) ?> total</span>
-                </div>
-                <ul class="list-group list-group-flush small">
-                    <?php foreach ($plannerRows as $p): ?>
-                        <li class="list-group-item border-light px-3 py-2.5 d-flex justify-content-between align-items-center">
-                            <div class="me-2 text-truncate">
-                                <span class="fw-medium text-dark d-block text-truncate"><?= htmlspecialchars($p['subject_name']) ?> &bull; <span class="fw-normal text-muted"><?= htmlspecialchars($p['topic']) ?></span></span>
-                                <span class="text-muted extra-small d-block"><?= htmlspecialchars($p['study_date'] . ' [' . $p['start_time'] . ' - ' . $p['end_time'] . ']') ?></span>
-                            </div>
-                            <form method="post" onsubmit="return confirm('Delete?');" class="flex-shrink-0">
-                                <input type="hidden" name="action" value="delete_planner">
-                                <input type="hidden" name="id" value="<?= $p['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-outline-danger border-1 px-2 py-0.5 rounded-2 extra-small fw-medium d-inline-flex align-items-center gap-1 shadow-none" title="Delete">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
-                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                                </svg>
-                                <span>Delete</span>
-                            </button>
-                            </form>
-                        </li>
-                    <?php endforeach; ?>
-                    <?php if (!$plannerRows): ?>
-                        <li class="list-group-item text-center text-muted py-4 extra-small">No planner items added.</li>
                     <?php endif; ?>
                 </ul>
             </div>

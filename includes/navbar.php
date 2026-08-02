@@ -6,6 +6,7 @@ $currentLang = $_SESSION['lang'] ?? 'en';
 ?>
 
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
   /* Custom enhancements */
   .custom-navbar {
     background: rgba(63, 140, 255, 0.95);
@@ -39,6 +40,27 @@ $currentLang = $_SESSION['lang'] ?? 'en';
   /* Tailwind's .collapse can hide the Bootstrap navbar content. */
   .custom-navbar .navbar-collapse.show {
     visibility: visible !important;
+  }
+  html[lang="kh"] body {
+    font-family: 'Noto Sans Khmer', 'Inter', sans-serif;
+  }
+  .loading-inline {
+    pointer-events: none !important;
+    opacity: 0.82 !important;
+  }
+  .loading-inline .loading-inline-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .loading-inline .loading-inline-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: currentColor;
+    animation: pageLoadingSpin 0.8s linear infinite;
+    flex: 0 0 auto;
   }
   @media (min-width: 992px) {
     .custom-navbar .navbar-collapse {
@@ -130,6 +152,7 @@ $currentLang = $_SESSION['lang'] ?? 'en';
   (function () {
     const navbar = document.getElementById('mainNavbar');
     const toggler = document.querySelector('.custom-navbar .navbar-toggler');
+    const overlay = document.getElementById('pageLoadingOverlay');
     if (!navbar || !toggler) return;
 
     const setExpanded = (expanded) => {
@@ -161,5 +184,21 @@ $currentLang = $_SESSION['lang'] ?? 'en';
         setExpanded(navbar.classList.contains('show'));
       }
     });
+
+    const setInlineLoading = (el) => {
+      if (!el || el.dataset.loadingApplied === '1') return;
+      el.dataset.loadingApplied = '1';
+      el.dataset.originalHtml = el.innerHTML;
+      el.classList.add('loading-inline');
+      el.innerHTML = '<span class="loading-inline-content"><span class="loading-inline-spinner" aria-hidden="true"></span><span>Loading...</span></span>';
+      if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') {
+        el.disabled = true;
+      }
+    };
+
+    document.addEventListener('submit', function (event) {
+      const submitter = event.submitter || event.target.querySelector('button[type="submit"], input[type="submit"]');
+      setInlineLoading(submitter);
+    }, true);
   })();
 </script>

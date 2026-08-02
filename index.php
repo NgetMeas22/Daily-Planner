@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 
+$currentLang = $_SESSION['lang'] ?? 'en';
+
 if (is_logged_in()) {
     redirect('dashboard.php');
 }
@@ -36,13 +38,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo htmlspecialchars($currentLang); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Planner Auth</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
+        .loading-inline {
+            pointer-events: none !important;
+            opacity: 0.82 !important;
+        }
+        .loading-inline .loading-inline-content {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .loading-inline .loading-inline-spinner {
+            width: 14px;
+            height: 14px;
+            border-radius: 999px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-top-color: currentColor;
+            animation: pageLoadingSpin 0.8s linear infinite;
+            flex: 0 0 auto;
+        }
+    </style>
 </head>
 <body class="bg-light min-vh-100 d-flex align-items-center py-5">
     <div class="position-fixed top-0 end-0 p-3 d-flex gap-2">
@@ -91,6 +116,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         </div>
     </div>
+
+    <script>
+        (function () {
+            const setInlineLoading = (el) => {
+                if (!el || el.dataset.loadingApplied === '1') return;
+                el.dataset.loadingApplied = '1';
+                el.dataset.originalHtml = el.innerHTML;
+                el.classList.add('loading-inline');
+                el.innerHTML = '<span class="loading-inline-content"><span class="loading-inline-spinner" aria-hidden="true"></span><span>Loading...</span></span>';
+                if (el.tagName === 'BUTTON') {
+                    el.disabled = true;
+                }
+            };
+
+            document.addEventListener('submit', function (event) {
+                const submitter = event.submitter || event.target.querySelector('button[type="submit"], input[type="submit"]');
+                setInlineLoading(submitter);
+            }, true);
+        })();
+    </script>
 
     <!-- Optional Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
