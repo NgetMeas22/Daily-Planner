@@ -105,30 +105,6 @@ foreach ($dateExpenses as $expense) {
 }
 $totalKhr = $totalUsd * $khrRate;
 
-// Handle Add Expense
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
-    $title = trim($_POST['title'] ?? '');
-    $amountUsd = (float) ($_POST['amount_usd'] ?? 0);
-    $amountKhr = (float) ($_POST['amount_khr'] ?? 0);
-    $expenseDate = $_POST['expense_date'] ?? '';
-
-    // If USD is empty/zero, convert KHR input to USD
-    if ($amountUsd <= 0 && $amountKhr > 0) {
-        $amountUsd = $amountKhr / $khrRate;
-    }
-
-    if ($title === '' || $amountUsd <= 0 || $expenseDate === '') {
-        $errors[] = 'Title, a valid amount (USD or KHR), and date are required.';
-    } else {
-        $stmt = $conn->prepare('INSERT INTO expenses (user_id, title, amount, expense_date) VALUES (?, ?, ?, ?)');
-        $stmt->bind_param('isds', $userId, $title, $amountUsd, $expenseDate);
-        $stmt->execute();
-        
-        // Redirect to the added expense's date so the view updates automatically
-        redirect('expenses.php?date=' . urlencode($expenseDate));
-    }
-}
-
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo htmlspecialchars($currentLang); ?>">
@@ -192,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
             <div>
                 <div class="flex justify-between items-center">
                     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Remaining Budget</p>
-                    
+
                     <button onclick="openReportModal()" class="bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 font-semibold px-3 py-1 rounded-lg text-xs flex items-center space-x-1.5 transition">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -227,23 +203,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
         <h2 class="text-lg font-bold text-gray-900 mb-4">Add Expense</h2>
         <form method="post" class="grid grid-cols-1 sm:grid-cols-12 gap-4">
             <input type="hidden" name="add_expense" value="1">
-            
+
             <div class="sm:col-span-4">
                 <input class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" name="title" placeholder="Title / Item Name" required>
             </div>
-            
+
             <div class="sm:col-span-3">
                 <input id="amount_usd" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" type="number" step="0.01" name="amount_usd" placeholder="Amount ($)" oninput="syncFromUsd()">
             </div>
-            
+
             <div class="sm:col-span-3">
                 <input id="amount_khr" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" type="number" step="100" name="amount_khr" placeholder="Amount (KHR ៛)" oninput="syncFromKhr()">
             </div>
-            
+
             <div class="sm:col-span-2">
                 <input class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" type="date" name="expense_date" value="<?php echo htmlspecialchars($selectedDate); ?>" required>
             </div>
-            
+
             <div class="sm:col-span-12">
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl shadow-sm text-sm transition">
                     Save Expense
@@ -268,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
 
         <!-- Mobile View -->
         <div class="block md:hidden divide-y divide-gray-100">
-            <?php foreach ($dateExpenses as $expense): 
+            <?php foreach ($dateExpenses as $expense):
                 $amountUsd = (float)$expense['amount'];
                 $amountKhr = $amountUsd * $khrRate;
             ?>
@@ -297,8 +273,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
                     </div>
 
                     <div class="flex justify-end mt-3 pt-2 border-t border-gray-50">
-                        <a class="inline-flex items-center text-xs font-medium text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition" 
-                           href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$expense['id']; ?>" 
+                        <a class="inline-flex items-center text-xs font-medium text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition"
+                           href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$expense['id']; ?>"
                            onclick="return confirm('Delete this expense?')">
                             <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -333,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                    <?php foreach ($dateExpenses as $expense): 
+                    <?php foreach ($dateExpenses as $expense):
                         $amountUsd = (float)$expense['amount'];
                         $amountKhr = $amountUsd * $khrRate;
                     ?>
@@ -353,8 +329,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
                                 </div>
                             </td>
                             <td class="py-3.5 px-6 text-right align-middle">
-                                <a class="inline-flex items-center text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md transition" 
-                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$expense['id']; ?>" 
+                                <a class="inline-flex items-center text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md transition"
+                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$expense['id']; ?>"
                                    onclick="return confirm('Delete this expense?')">
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -423,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
 
             <div class="space-y-4">
                 <h4 class="text-sm font-bold text-gray-700">Detailed Daily Breakdown</h4>
-                <?php foreach ($reportByDate as $groupDate => $items): 
+                <?php foreach ($reportByDate as $groupDate => $items):
                     $subTotal = array_sum(array_column($items, 'amount'));
                 ?>
                     <div class="border border-gray-100 rounded-xl p-4 bg-gray-50/50 expense-day-card" data-report-date="<?php echo htmlspecialchars($groupDate); ?>">
@@ -501,41 +477,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
                 <head>
                     <title>Expense Report ${dateKey}</title>
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+                        * { box-sizing: border-box; }
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            padding: 24px;
+                            color: #1f2937;
+                            font-size: 16px;
+                        }
+                        .toolbar {
+                            display: flex;
+                            justify-content: flex-end;
+                            margin-bottom: 16px;
+                        }
+                        .close-btn {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 999px;
+                            border: 1px solid #e5e7eb;
+                            background: #f3f4f6;
+                            color: #374151;
+                            font-size: 18px;
+                            font-weight: bold;
+                            line-height: 1;
+                            cursor: pointer;
+                        }
+                        .close-btn:hover { background: #e5e7eb; }
+                        .print-btn {
+                            border: none;
+                            background: #2563eb;
+                            color: #fff;
+                            font-size: 14px;
+                            font-weight: 600;
+                            padding: 8px 16px;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            margin-right: 8px;
+                        }
+                        .print-btn:hover { background: #1d4ed8; }
                         .border { border: 1px solid #e5e7eb; }
                         .rounded-xl { border-radius: 12px; }
-                        .p-4 { padding: 16px; }
-                        .mb-2 { margin-bottom: 8px; }
-                        .pb-2 { padding-bottom: 8px; }
+                        .p-4 { padding: 20px; }
+                        .mb-2 { margin-bottom: 12px; }
+                        .pb-2 { padding-bottom: 12px; }
                         .border-b { border-bottom: 1px solid #e5e7eb; }
                         .flex { display: flex; }
                         .justify-between { justify-content: space-between; }
                         .items-center { align-items: center; }
                         .gap-2 { gap: 8px; }
-                        .text-xs { font-size: 12px; }
-                        .text-[11px] { font-size: 11px; }
+                        .text-xs { font-size: 16px; }
+                        .text-\\[11px\\] { font-size: 15px; }
                         .font-bold { font-weight: 700; }
                         .font-semibold { font-weight: 600; }
                         .text-gray-700 { color: #374151; }
                         .text-gray-800 { color: #1f2937; }
                         .text-red-500 { color: #ef4444; }
                         .bg-gray-50 { background: #f9fafb; }
-                        .bg-blue-600 { background: #2563eb; color: white; }
                         ul { list-style: none; padding: 0; margin: 0; }
-                        li { padding: 6px 0; }
+                        li { padding: 10px 0; font-size: 16px; }
+                        @media print {
+                            .toolbar { display: none; }
+                        }
                     </style>
                 </head>
                 <body>
+                    <div class="toolbar">
+                        <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+                        <button class="close-btn" onclick="window.close()" aria-label="Close">&times;</button>
+                    </div>
                     ${clone.outerHTML}
                 </body>
             </html>
         `);
         popup.document.close();
-        popup.focus();
-        popup.onload = () => {
-            popup.print();
-            popup.close();
-        };
     }
 </script>
 

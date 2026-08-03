@@ -613,55 +613,96 @@
                 });
             });
 
-            function downloadPlannerDayPdf(dateKey) {
-                const source = document.querySelector('[data-report-date="' + dateKey + '"]');
-                if (!source) return;
+          function downloadPlannerDayPdf(dateKey) {
+    const source = document.querySelector('[data-report-date="' + dateKey + '"]');
+    if (!source) return;
 
-                const clone = source.cloneNode(true);
-                clone.querySelectorAll('button').forEach((btn) => btn.remove());
+    const clone = source.cloneNode(true);
+    clone.querySelectorAll('button').forEach((btn) => btn.remove());
 
-                const popup = window.open('', '_blank', 'width=900,height=700');
-                popup.document.write(`
-                    <html>
-                        <head>
-                            <title>Planner Report ${dateKey}</title>
-                            <style>
-                                body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
-                                .border { border: 1px solid #e5e7eb; }
-                                .rounded-2xl { border-radius: 16px; }
-                                .p-4 { padding: 16px; }
-                                .space-y-4 > * + * { margin-top: 16px; }
-                                .text-xs { font-size: 12px; }
-                                .font-bold { font-weight: 700; }
-                                .font-semibold { font-weight: 600; }
-                                .text-gray-700 { color: #374151; }
-                                .text-gray-800 { color: #1f2937; }
-                                .text-amber-600 { color: #d97706; }
-                                .text-emerald-600 { color: #059669; }
-                                .text-blue-600 { color: #2563eb; }
-                                .bg-gray-50 { background: #f9fafb; }
-                                .bg-blue-50 { background: #eff6ff; }
-                                .border-b { border-bottom: 1px solid #e5e7eb; }
-                                .pb-2 { padding-bottom: 8px; }
-                                .mb-2 { margin-bottom: 8px; }
-                                .flex { display: flex; }
-                                .justify-between { justify-content: space-between; }
-                                .items-center { align-items: center; }
-                                .gap-2 { gap: 8px; }
-                                ul { list-style: none; padding: 0; margin: 0; }
-                                li { padding: 6px 0; }
-                            </style>
-                        </head>
-                        <body>${clone.outerHTML}</body>
-                    </html>
-                `);
-                popup.document.close();
-                popup.focus();
-                popup.onload = () => {
-                    popup.print();
-                    popup.close();
-                };
-            }
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    popup.document.write(`
+        <html>
+            <head>
+                <title>Planner Report ${dateKey}</title>
+                <style>
+                    * { box-sizing: border-box; }
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 24px;
+                        color: #1f2937;
+                        font-size: 16px;
+                    }
+                    .toolbar {
+                        display: flex;
+                        justify-content: flex-end;
+                        margin-bottom: 16px;
+                    }
+                    .close-btn {
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 999px;
+                        border: 1px solid #e5e7eb;
+                        background: #f3f4f6;
+                        color: #374151;
+                        font-size: 18px;
+                        font-weight: bold;
+                        line-height: 1;
+                        cursor: pointer;
+                    }
+                    .close-btn:hover { background: #e5e7eb; }
+                    .print-btn {
+                        border: none;
+                        background: #2563eb;
+                        color: #fff;
+                        font-size: 14px;
+                        font-weight: 600;
+                        padding: 8px 16px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        margin-right: 8px;
+                    }
+                    .print-btn:hover { background: #1d4ed8; }
+                    .border { border: 1px solid #e5e7eb; }
+                    .rounded-2xl { border-radius: 16px; }
+                    .p-4 { padding: 20px; }
+                    .space-y-4 > * + * { margin-top: 16px; }
+                    .text-xs { font-size: 16px; }
+                    .font-bold { font-weight: 700; }
+                    .font-semibold { font-weight: 600; }
+                    .text-gray-700 { color: #374151; }
+                    .text-gray-800 { color: #1f2937; }
+                    .text-amber-600 { color: #d97706; }
+                    .text-emerald-600 { color: #059669; }
+                    .text-blue-600 { color: #2563eb; }
+                    .bg-gray-50 { background: #f9fafb; }
+                    .bg-blue-50 { background: #eff6ff; }
+                    .border-b { border-bottom: 1px solid #e5e7eb; }
+                    .pb-2 { padding-bottom: 12px; }
+                    .mb-2 { margin-bottom: 12px; }
+                    .flex { display: flex; }
+                    .justify-between { justify-content: space-between; }
+                    .items-center { align-items: center; }
+                    .gap-2 { gap: 8px; }
+                    ul { list-style: none; padding: 0; margin: 0; }
+                    li { padding: 10px 0; font-size: 16px; }
+                    @media print {
+                        .toolbar { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="toolbar">
+                    <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+                    <button class="close-btn" onclick="window.close()" aria-label="Close">&times;</button>
+                </div>
+                ${clone.outerHTML}
+            </body>
+        </html>
+    `);
+    popup.document.close();
+}
 
         </script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

@@ -67,6 +67,7 @@ $conn->query("
         day_name ENUM('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') NOT NULL,
         start_time TIME NOT NULL,
         end_time TIME NOT NULL,
+        description TEXT,
         topic VARCHAR(255) NOT NULL,
         goal TEXT,
         result TEXT,
@@ -77,6 +78,11 @@ $conn->query("
         CONSTRAINT fk_planner_subject FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE ON UPDATE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
+
+$hasPlannerDescription = $conn->query("SHOW COLUMNS FROM planner LIKE 'description'");
+if ($hasPlannerDescription && $hasPlannerDescription->num_rows === 0) {
+    $conn->query("ALTER TABLE planner ADD COLUMN description TEXT NULL AFTER end_time");
+}
 
 $conn->query("
     CREATE TABLE IF NOT EXISTS goals (
