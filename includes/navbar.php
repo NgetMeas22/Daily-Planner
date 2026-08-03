@@ -3,15 +3,63 @@ if (!isset($activePage)) {
     $activePage = 'dashboard';
 }
 $currentLang = $_SESSION['lang'] ?? 'en';
+
+// Handle Profile Picture Upload Logic
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['user_avatar_file'])) {
+    $file = $_FILES['user_avatar_file'];
+
+    if ($file['error'] === UPLOAD_ERR_OK) {
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        if (in_array($fileExt, $allowedExtensions)) {
+            $uploadDir = 'uploads/avatars/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $userId = $_SESSION['user_id'] ?? 'user';
+            $fileName = 'avatar_' . $userId . '_' . time() . '.' . $fileExt;
+            $targetPath = $uploadDir . $fileName;
+
+            if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+                // Update Session
+                $_SESSION['user_avatar'] = $targetPath;
+
+                // Update Database (if $conn and $userId are available in scope)
+                if (isset($conn) && isset($_SESSION['user_id'])) {
+                    $stmt = $conn->prepare("UPDATE users SET avatar = ? WHERE id = ?");
+                    if ($stmt) {
+                        $stmt->bind_param("si", $targetPath, $_SESSION['user_id']);
+                        $stmt->execute();
+                    }
+                }
+
+                // Refresh page to prevent form resubmission
+                header("Location: " . $_SERVER['REQUEST_URI']);
+                exit;
+            }
+        }
+    }
+}
+
+// User session data
+$userName    = $_SESSION['user_name'] ?? 'User';
+$userAvatar  = $_SESSION['user_avatar'] ?? null;
+$userInitial = strtoupper(substr($userName, 0, 1));
 ?>
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
-  /* Custom enhancements */
+
   .custom-navbar {
     background: rgba(63, 140, 255, 0.95);
     backdrop-filter: blur(10px);
     transition: all 0.3s ease;
+    font-family: 'Inter', 'Noto Sans Khmer', sans-serif;
+  }
+  .custom-navbar * {
+    box-sizing: border-box;
   }
   .navbar-backdrop {
     position: fixed;
@@ -29,9 +77,9 @@ $currentLang = $_SESSION['lang'] ?? 'en';
   .custom-navbar .nav-link {
     position: relative;
     font-weight: 500;
+    font-size: 0.95rem;
     transition: color 0.2s ease-in-out;
   }
-  /* Subtle bottom border accent for active links on desktop */
   @media (min-width: 992px) {
     .custom-navbar .nav-link.active::after {
       content: '';
@@ -44,20 +92,151 @@ $currentLang = $_SESSION['lang'] ?? 'en';
       border-radius: 2px;
     }
   }
-  .lang-btn.active {
-    background-color: #ffffff !important;
-    color: #3988ff !important;
-    font-weight: 600;
-  }
 
-  /* Tailwind's .collapse can hide the Bootstrap navbar content. */
   .custom-navbar .navbar-collapse.show {
     visibility: visible !important;
   }
 
-  /* Mobile panel header (brand + close button) */
   .navbar-panel-header {
     display: none;
+  }
+
+  /* ===== Right-side controls (profile / language / logout) ===== */
+  .navbar-right-controls {
+    line-height: 1;
+  }
+
+  /* User Profile Badge */
+  .user-profile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 3px 12px 3px 3px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 50px;
+    color: #ffffff;
+    line-height: 1.2;
+    max-width: 100%;
+  }
+  .user-profile-badge:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .user-profile-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    max-width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Avatar Upload */
+  .avatar-upload-wrapper {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: block;
+  }
+  .user-avatar-img,
+  .user-avatar-fallback {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #ffffff;
+    display: block;
+  }
+  .user-avatar-fallback {
+    background-color: #ffffff;
+    color: #2563eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+  .avatar-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .avatar-overlay svg {
+    width: 12px;
+    height: 12px;
+  }
+  .avatar-upload-wrapper:hover .avatar-overlay {
+    opacity: 1;
+  }
+
+  /* Language Switcher Pill */
+  .lang-switcher-pill {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 50px;
+    padding: 3px;
+    line-height: 1;
+  }
+  .lang-pill-btn {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #ffffff;
+    text-decoration: none;
+    border-radius: 50px;
+    transition: all 0.2s ease;
+  }
+  .lang-pill-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .lang-pill-btn.active {
+    background: #ffffff;
+    color: #2563eb;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Logout Button */
+  .nav-logout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 50px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+  .nav-logout-btn svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
+  .nav-logout-btn:hover {
+    background: rgba(220, 38, 38, 0.85);
+    border-color: rgba(220, 38, 38, 0.85);
+    color: #ffffff;
   }
 
   @media (max-width: 991.98px) {
@@ -105,7 +284,6 @@ $currentLang = $_SESSION['lang'] ?? 'en';
       font-weight: 700;
     }
 
-    /* Sticky header inside the sliding panel */
     .navbar-panel-header {
       display: flex;
       align-items: center;
@@ -152,6 +330,20 @@ $currentLang = $_SESSION['lang'] ?? 'en';
       font-weight: 700;
       margin: 1rem 0 0.5rem;
     }
+
+    .navbar-right-controls {
+      align-items: stretch !important;
+    }
+    .user-profile-badge,
+    .lang-switcher-pill,
+    .nav-logout-btn {
+      width: 100%;
+      justify-content: center;
+    }
+    .lang-pill-btn {
+      flex: 1;
+      text-align: center;
+    }
   }
 
   .loading-inline {
@@ -172,6 +364,9 @@ $currentLang = $_SESSION['lang'] ?? 'en';
     animation: pageLoadingSpin 0.8s linear infinite;
     flex: 0 0 auto;
   }
+  @keyframes pageLoadingSpin {
+    to { transform: rotate(360deg); }
+  }
   @media (min-width: 992px) {
     .custom-navbar .navbar-collapse {
       display: flex !important;
@@ -183,7 +378,7 @@ $currentLang = $_SESSION['lang'] ?? 'en';
 <nav class="navbar navbar-expand-lg navbar-dark custom-navbar sticky-top shadow-sm py-2">
     <div id="navbarBackdrop" class="navbar-backdrop d-lg-none" aria-hidden="true"></div>
     <div class="container-fluid px-lg-4">
-        
+
         <!-- Brand Logo / Name -->
         <a class="navbar-brand fw-bold d-flex align-items-center gap-2 fs-5" href="dashboard.php">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" class="bi bi-calendar-check" viewBox="0 0 16 16">
@@ -216,7 +411,7 @@ $currentLang = $_SESSION['lang'] ?? 'en';
                     </svg>
                 </button>
             </div>
-            
+
             <!-- Navigation Links -->
             <ul class="navbar-nav me-auto mb-3 mb-lg-0 gap-lg-1">
                 <li class="nav-item">
@@ -246,25 +441,47 @@ $currentLang = $_SESSION['lang'] ?? 'en';
                 </li>
             </ul>
 
-            <div class="navbar-panel-section-label d-lg-none"><?php echo t('language') ?? 'Language'; ?></div>
-            <hr class="d-none text-white-50 my-2">
+            <div class="navbar-panel-section-label d-lg-none"><?php echo t('account') ?? 'Account'; ?></div>
 
-            <!-- Right Controls (Language & Logout) -->
-            <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-center pt-1 pt-lg-0">
-                
-                <!-- Language Selector Group -->
-                <div class="btn-group w-100 w-lg-auto" role="group" aria-label="Language switch">
-                    <a class="btn btn-outline-light btn-sm lang-btn px-3 <?php echo $currentLang === 'en' ? 'active' : ''; ?>" href="?lang=en">
+            <!-- Right Controls (User Profile, Language & Logout) -->
+            <div class="navbar-right-controls d-flex flex-column flex-lg-row align-items-center gap-2 pt-2 pt-lg-0">
+
+                <!-- User Profile Badge with Photo Upload Form -->
+                <div class="user-profile-badge">
+                    <form id="avatarForm" action="" method="POST" enctype="multipart/form-data" class="m-0 p-0">
+                        <label class="avatar-upload-wrapper m-0" title="Click to change profile picture">
+                            <input type="file" name="user_avatar_file" accept="image/*" class="d-none" onchange="document.getElementById('avatarForm').submit();">
+
+                            <?php if (!empty($userAvatar)): ?>
+                                <img src="<?php echo htmlspecialchars($userAvatar); ?>" alt="" class="user-avatar-img">
+                            <?php else: ?>
+                                <div class="user-avatar-fallback"><?php echo htmlspecialchars($userInitial); ?></div>
+                            <?php endif; ?>
+
+                            <div class="avatar-overlay">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M10.5 8.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+                                    <path d="M2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2zm.5 2a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm9 2.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z"/>
+                                </svg>
+                            </div>
+                        </label>
+                    </form>
+                    <span class="user-profile-name"><?php echo htmlspecialchars($userName); ?></span>
+                </div>
+
+                <!-- Language Switcher -->
+                <div class="lang-switcher-pill" role="group" aria-label="Language switch">
+                    <a class="lang-pill-btn <?php echo $currentLang === 'en' ? 'active' : ''; ?>" href="?lang=en">
                         <?php echo t('english'); ?>
                     </a>
-                    <a class="btn btn-outline-light btn-sm lang-btn px-3 <?php echo $currentLang === 'kh' ? 'active' : ''; ?>" href="?lang=kh">
+                    <a class="lang-pill-btn <?php echo $currentLang === 'kh' ? 'active' : ''; ?>" href="?lang=kh">
                         <?php echo t('khmer'); ?>
                     </a>
                 </div>
 
                 <!-- Logout Button -->
-                <a class="btn btn-outline-success btn-sm fw-medium px-3 text-light d-flex align-items-center justify-content-center gap-1 shadow-sm mt-2 mt-lg-0" href="logout.php">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-right" viewBox="0 0 16 16">
+                <a class="nav-logout-btn" href="logout.php">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
                         <path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 8.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/>
                         <path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/>
                     </svg>
@@ -337,8 +554,12 @@ $currentLang = $_SESSION['lang'] ?? 'en';
     };
 
     document.addEventListener('submit', function (event) {
+      // Ignore avatar upload submit so inline loading doesn't freeze the avatar preview
+      if (event.target && event.target.id === 'avatarForm') return;
+
       const submitter = event.submitter || event.target.querySelector('button[type="submit"], input[type="submit"]');
       setInlineLoading(submitter);
     }, true);
+
   })();
 </script>

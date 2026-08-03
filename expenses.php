@@ -105,6 +105,30 @@ foreach ($dateExpenses as $expense) {
 }
 $totalKhr = $totalUsd * $khrRate;
 
+// Handle Add Expense
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_expense'])) {
+    $title = trim($_POST['title'] ?? '');
+    $amountUsd = (float) ($_POST['amount_usd'] ?? 0);
+    $amountKhr = (float) ($_POST['amount_khr'] ?? 0);
+    $expenseDate = $_POST['expense_date'] ?? '';
+
+    // If USD is empty/zero, convert KHR input to USD
+    if ($amountUsd <= 0 && $amountKhr > 0) {
+        $amountUsd = $amountKhr / $khrRate;
+    }
+
+    if ($title === '' || $amountUsd <= 0 || $expenseDate === '') {
+        $errors[] = 'Title, a valid amount (USD or KHR), and date are required.';
+    } else {
+        $stmt = $conn->prepare('INSERT INTO expenses (user_id, title, amount, expense_date) VALUES (?, ?, ?, ?)');
+        $stmt->bind_param('isds', $userId, $title, $amountUsd, $expenseDate);
+        $stmt->execute();
+        
+        // Redirect to the added expense's date so the view updates automatically
+        redirect('expenses.php?date=' . urlencode($expenseDate));
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo htmlspecialchars($currentLang); ?>">
@@ -217,7 +241,7 @@ $totalKhr = $totalUsd * $khrRate;
             </div>
             
             <div class="sm:col-span-2">
-                <input class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" type="date" name="expense_date" value="<?php echo date('Y-m-d'); ?>" required>
+                <input class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" type="date" name="expense_date" value="<?php echo htmlspecialchars($selectedDate); ?>" required>
             </div>
             
             <div class="sm:col-span-12">

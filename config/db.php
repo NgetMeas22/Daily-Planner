@@ -20,15 +20,22 @@ $conn->query("
         fullname VARCHAR(100) NOT NULL,
         username VARCHAR(50) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
+        avatar VARCHAR(255) DEFAULT NULL,
         monthly_budget DECIMAL(10,2) NOT NULL DEFAULT 150.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
 
+// Add the profile avatar column to existing user tables.
+$hasAvatar = $conn->query("SHOW COLUMNS FROM users LIKE 'avatar'");
+if ($hasAvatar && $hasAvatar->num_rows === 0) {
+    $conn->query("ALTER TABLE users ADD COLUMN avatar VARCHAR(255) DEFAULT NULL AFTER password");
+}
+
 // Add the personal monthly budget to existing user tables.
 $hasMonthlyBudget = $conn->query("SHOW COLUMNS FROM users LIKE 'monthly_budget'");
 if ($hasMonthlyBudget && $hasMonthlyBudget->num_rows === 0) {
-    $conn->query("ALTER TABLE users ADD COLUMN monthly_budget DECIMAL(10,2) NOT NULL DEFAULT 150.00 AFTER password");
+    $conn->query("ALTER TABLE users ADD COLUMN monthly_budget DECIMAL(10,2) NOT NULL DEFAULT 150.00 AFTER avatar");
 }
 
 $conn->query("
