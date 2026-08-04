@@ -149,8 +149,8 @@ $totalKhr = $totalUsd * $khrRate;
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
             <div>
-                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Selected Date Spent</p>
-                <div class="text-3xl font-extrabold text-blue-600 mt-2">$<?php echo number_format($dateTotal, 2); ?></div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent Today</p>
+                <div class="text-3xl font-extrabold text-yellow-5 00 mt-2">- $<?php echo number_format($dateTotal, 2); ?></div>
             </div>
             <p class="text-xs text-gray-500 mt-4"><?php echo count($dateExpenses); ?> item(s) logged on this date</p>
         </div>
@@ -158,7 +158,7 @@ $totalKhr = $totalUsd * $khrRate;
         <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
             <div>
                 <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent (All-Time)</p>
-                <div class="text-3xl font-extrabold text-gray-800 mt-2">$<?php echo number_format($allTotal, 2); ?></div>
+                <div class="text-3xl font-extrabold text-red-500 mt-2">- $<?php echo number_format($allTotal, 2); ?></div>
             </div>
             <p class="text-xs text-gray-500 mt-4">Accumulated total spending</p>
         </div>

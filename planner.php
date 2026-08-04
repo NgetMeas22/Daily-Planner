@@ -112,6 +112,30 @@
     $dayPercent = $totalToday > 0 ? (int) round(($doneToday / $totalToday) * 100) : 0;
     $hoursSpent = floor($totalSecondsSpent / 3600);
     $minutesSpent = floor(($totalSecondsSpent % 3600) / 60);
+    $secondsDone = 0;
+    $secondsNotDone = 0;
+
+    foreach ($dayRows as $row) {
+        $taskSeconds = 0;
+        if (!empty($row['start_time']) && !empty($row['end_time'])) {
+            $startTs = strtotime($row['start_time']);
+            $endTs = strtotime($row['end_time']);
+            if ($endTs > $startTs) {
+                $taskSeconds = $endTs - $startTs;
+            }
+        }
+
+        if ((int)$row['progress'] >= 100 || $row['status'] === 'Completed') {
+            $secondsDone += $taskSeconds;
+        } else {
+            $secondsNotDone += $taskSeconds;
+        }
+    }
+
+    $hoursDone = floor($secondsDone / 3600);
+    $minutesDone = floor(($secondsDone % 3600) / 60);
+    $hoursNotDone = floor($secondsNotDone / 3600);
+    $minutesNotDone = floor(($secondsNotDone % 3600) / 60);
 
     // Fetch History Data
     $historyStmt = $conn->prepare("
@@ -481,10 +505,16 @@
             </table>
         </div>
 
-        <!-- Footer Action -->
+      <!-- Footer Action -->
         <div class="p-4 bg-gray-50/50 border-t border-gray-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
             <span class="text-xs text-gray-400 text-center sm:text-left">
                 Total tasks: <strong class="text-gray-700"><?php echo count($dayRows); ?></strong>
+                <span class="mx-2 text-gray-300">|</span>
+                Total hours: <strong class="text-gray-700"><?php echo $hoursSpent; ?>h <?php echo $minutesSpent; ?>mn</strong>
+                <span class="mx-2 text-gray-300">|</span>
+                Done: <strong class="text-emerald-600"><?php echo $hoursDone; ?>h <?php echo $minutesDone; ?>mn</strong>
+                <span class="mx-2 text-gray-300">/</span>
+                Not done: <strong class="text-red-600"><?php echo $hoursNotDone; ?>h <?php echo $minutesNotDone; ?>mn</strong>
             </span>
             <button type="button" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium px-4 py-2.5 rounded-xl shadow-sm text-sm transition flex items-center justify-center space-x-2" data-bs-toggle="modal" data-bs-target="#plannerReportModal">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
