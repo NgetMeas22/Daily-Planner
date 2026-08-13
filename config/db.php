@@ -119,9 +119,16 @@ $conn->query("
         title VARCHAR(100) NOT NULL,
         category VARCHAR(100),
         amount DECIMAL(10,2) NOT NULL,
+        type ENUM('expense','income') NOT NULL DEFAULT 'expense',
         expense_date DATE NOT NULL,
         note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_expenses_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
+
+// Add the type column to existing expense tables.
+$hasExpenseType = $conn->query("SHOW COLUMNS FROM expenses LIKE 'type'");
+if ($hasExpenseType && $hasExpenseType->num_rows === 0) {
+    $conn->query("ALTER TABLE expenses ADD COLUMN type ENUM('expense','income') NOT NULL DEFAULT 'expense' AFTER amount");
+}

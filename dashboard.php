@@ -207,6 +207,7 @@ $subjectDistRaw = $conn->query("
 ")->fetch_all(MYSQLI_ASSOC);
 $subjectLabels = array_map(fn($r) => $r['name'], $subjectDistRaw);
 $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
+
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo htmlspecialchars($currentLang); ?>">
@@ -217,7 +218,7 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
 
         :root {
             --paper:   #F5F6FB;
@@ -428,6 +429,108 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
             color: var(--ink);
             box-shadow: 0 1px 6px rgba(29,33,64,.08);
         }
+        /* Card Container Base */
+.stat-card-modern {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 1.25rem;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(118, 110, 230, 0.12), 
+                0 4px 10px rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 35px rgba(118, 110, 230, 0.18);
+}
+
+/* Side Accent Ribbon */
+.stat-card-modern::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 25%;
+    height: 45%;
+    width: 6px;
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+
+/* Individual Card Accent Colors */
+.stat-subjects::after { background-color: #4F46E5; }
+.stat-planner::after  { background-color: #38BDF8; }
+.stat-goals::after    { background-color: #6366F1; }
+.stat-expenses::after { background-color: #10B981; }
+
+/* Circular Progress Ring Styling */
+.stat-progress-ring {
+    width: 48px;
+    height: 48px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-progress-ring svg {
+    transform: rotate(-90deg);
+    width: 100%;
+    height: 100%;
+}
+
+.stat-progress-ring circle {
+    fill: none;
+    stroke-width: 4.5;
+    stroke-linecap: round;
+}
+
+.stat-progress-ring .bg-circle {
+    stroke: #E2E8F0;
+}
+
+.stat-progress-ring .val-circle {
+    stroke-dasharray: 113; /* Circumference = 2 * PI * 18 */
+    transition: stroke-dashoffset 0.3s ease;
+}
+
+/* Ring Progress Color Themes */
+.stat-subjects .val-circle { stroke: #4F46E5; }
+.stat-planner .val-circle  { stroke: #38BDF8; }
+.stat-goals .val-circle    { stroke: #818CF8; }
+.stat-expenses .val-circle { stroke: #10B981; }
+
+.stat-progress-text {
+    position: absolute;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #1E293B;
+}
+
+.stat-progress-text.negative {
+    color: #EF4444;
+}
+
+/* Label & Typography Customization */
+.stat-label-modern {
+    color: #64748B;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.stat-value-modern {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0F172A;
+    line-height: 1.2;
+}
+
+.stat-subtext-modern {
+    font-size: 0.72rem;
+    color: #94A3B8;
+}
     </style>
 </head>
 <body>
@@ -452,52 +555,99 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
     <?php endif; ?>
 
     <!-- Summary Counters -->
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
-            <div class="stat-card stat-subjects">
-                <span class="stat-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+<div class="row g-3 mb-4">
+    <!-- Subjects Card -->
+    <div class="col-6 col-md-3">
+        <div class="stat-card-modern stat-subjects d-flex flex-column justify-content-between h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="stat-icon text-dark">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                 </span>
-                <div>
-                    <div class="stat-label extra-small text-uppercase tracking-wider">Subjects</div>
-                    <div class="stat-value fw-bold font-display"><?= $counts['subjects'] ?></div>
+                <div class="stat-progress-ring">
+                    <svg viewBox="0 0 42 42">
+                        <circle class="bg-circle" cx="21" cy="21" r="18"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 65;"/>
+                    </svg>
+                    <span class="stat-progress-text">+42%</span>
                 </div>
             </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card stat-planner">
-                <span class="stat-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                </span>
-                <div>
-                    <div class="stat-label extra-small text-uppercase tracking-wider">Planner</div>
-                    <div class="stat-value fw-bold font-display"><?= $counts['planner'] ?></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card stat-goals">
-                <span class="stat-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>
-                </span>
-                <div>
-                    <div class="stat-label extra-small text-uppercase tracking-wider">Goals</div>
-                    <div class="stat-value fw-bold font-display"><?= $counts['goals'] ?></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card stat-expenses">
-                <span class="stat-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
-                </span>
-                <div>
-                    <div class="stat-label extra-small text-uppercase tracking-wider">Expenses</div>
-                    <div class="stat-value fw-bold font-display"><?= $counts['expenses'] ?></div>
-                </div>
+            <div>
+                <div class="stat-label-modern mb-1">Subjects</div>
+                <div class="stat-value-modern"><?= $counts['subjects'] ?></div>
+                <div class="stat-subtext-modern mt-1">Active in system</div>
             </div>
         </div>
     </div>
+
+    <!-- Planner Card -->
+    <div class="col-6 col-md-3">
+        <div class="stat-card-modern stat-planner d-flex flex-column justify-content-between h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="stat-icon text-dark">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </span>
+                <div class="stat-progress-ring">
+                    <svg viewBox="0 0 42 42">
+                        <circle class="bg-circle" cx="21" cy="21" r="18"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 88;"/>
+                    </svg>
+                    <span class="stat-progress-text">+22%</span>
+                </div>
+            </div>
+            <div>
+                <div class="stat-label-modern mb-1">Planner</div>
+                <div class="stat-value-modern"><?= $counts['planner'] ?></div>
+                <div class="stat-subtext-modern mt-1">Scheduled events</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Goals Card -->
+    <div class="col-6 col-md-3">
+        <div class="stat-card-modern stat-goals d-flex flex-column justify-content-between h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="stat-icon text-dark">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>
+                </span>
+                <div class="stat-progress-ring">
+                    <svg viewBox="0 0 42 42">
+                        <circle class="bg-circle" cx="21" cy="21" r="18"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 105;"/>
+                    </svg>
+                    <span class="stat-progress-text negative">-5%</span>
+                </div>
+            </div>
+            <div>
+                <div class="stat-label-modern mb-1">Goals</div>
+                <div class="stat-value-modern"><?= $counts['goals'] ?></div>
+                <div class="stat-subtext-modern mt-1">In progress</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expenses Card -->
+    <div class="col-6 col-md-3">
+        <div class="stat-card-modern stat-expenses d-flex flex-column justify-content-between h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="stat-icon text-dark">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+                </span>
+                <div class="stat-progress-ring">
+                    <svg viewBox="0 0 42 42">
+                        <circle class="bg-circle" cx="21" cy="21" r="18"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 98;"/>
+                    </svg>
+                    <span class="stat-progress-text">+5%</span>
+                </div>
+            </div>
+            <div>
+                <div class="stat-label-modern mb-1">Expenses</div>
+                <div class="stat-value-modern"><?= $counts['expenses'] ?></div>
+                <div class="stat-subtext-modern mt-1">Tracked this month</div>
+            </div>
+        </div>
+    </div>
+</div>
 
     <!-- Charts -->
     <div class="row g-3 mb-4">
@@ -638,40 +788,44 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 
     <!-- Overview Lists Section -->
     <div class="row g-3">
-        <!-- Planner List -->
-        <div class="col-md-6">
-            <div class="panel">
-                <div class="panel-accent accent-planner"></div>
-                <div class="panel-head">
-                    <h6 class="mb-0 fw-semibold text-uppercase extra-small tracking-wider" style="color: var(--ink-soft);">Planner Items</h6>
-                    <span class="count-pill"><?= count($plannerRows) ?> total</span>
-                </div>
-                <div>
-                    <?php foreach ($plannerRows as $p): ?>
-                        <div class="row-item">
-                            <div class="text-truncate">
-                                <span class="row-title text-truncate d-block"><span class="row-dot" style="background:var(--c-planner);"></span><?= htmlspecialchars($p['subject_name']) ?> &bull; <span class="fw-normal" style="color:var(--ink-soft);"><?= htmlspecialchars($p['topic']) ?></span></span>
-                                <span class="row-sub d-block"><?= htmlspecialchars($p['study_date'] . '  ·  ' . $p['start_time'] . ' – ' . $p['end_time']) ?></span>
-                            </div>
-                            <form method="post" onsubmit="return confirm('Delete this planner item?');" class="flex-shrink-0">
-                                <input type="hidden" name="action" value="delete_planner">
-                                <input type="hidden" name="id" value="<?= $p['id'] ?>">
-                                <button type="submit" class="btn-del" title="Delete">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
-                                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                                    </svg>
-                                    Delete
-                                </button>
-                            </form>
-                        </div>
-                    <?php endforeach; ?>
-                    <?php if (!$plannerRows): ?>
-                        <div class="empty-state">No planner items added.</div>
-                    <?php endif; ?>
-                </div>
-            </div>
+       <!-- Planner List -->
+<div class="col-md-6">
+    <div class="panel">
+        <div class="panel-accent accent-planner"></div>
+        <div class="panel-head">
+            <h6 class="mb-0 fw-semibold text-uppercase extra-small tracking-wider" style="color: var(--ink-soft);">Planner Items</h6>
+            <span class="count-pill"><?= count($plannerRows) ?> total</span>
         </div>
+        <div>
+            <?php foreach ($plannerRows as $p): 
+                $studyDateFmt = date('D, j M Y', strtotime($p['study_date']));
+                $startFmt = date('h:i A', strtotime($p['start_time']));
+                $endFmt = date('h:i A', strtotime($p['end_time']));
+            ?>
+                <div class="row-item">
+                    <div class="text-truncate">
+                        <span class="row-title text-truncate d-block"><span class="row-dot" style="background:var(--c-planner);"></span><?= htmlspecialchars($p['subject_name']) ?> &bull; <span class="fw-normal" style="color:var(--ink-soft);"><?= htmlspecialchars($p['topic']) ?></span></span>
+                        <span class="row-sub d-block"><?= htmlspecialchars($studyDateFmt . '  ·  ' . $startFmt . ' - ' . $endFmt) ?></span>
+                    </div>
+                    <form method="post" onsubmit="return confirm('Delete this planner item?');" class="flex-shrink-0">
+                        <input type="hidden" name="action" value="delete_planner">
+                        <input type="hidden" name="id" value="<?= $p['id'] ?>">
+                        <button type="submit" class="btn-del" title="Delete">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                            </svg>
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            <?php endforeach; ?>
+            <?php if (!$plannerRows): ?>
+                <div class="empty-state">No planner items added.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
 
         <!-- Subjects List -->
         <div class="col-md-6">

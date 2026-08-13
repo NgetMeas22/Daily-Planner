@@ -1,4 +1,4 @@
-    <?php
+<?php
     require_once __DIR__ . '/includes/auth.php';
     require_login();
     $currentLang = $_SESSION['lang'] ?? 'en';
@@ -181,6 +181,15 @@
     $copyTemplateMap = [];
     foreach ($copyTemplateRows as $templateRow) {
         $copyTemplateMap[(int) $templateRow['subject_id']] = $templateRow;
+    }
+
+    // Overall completion totals across ALL history (used in the "Download All" grand summary)
+    $allHistoryTotal = count($allHistoryRows);
+    $allHistoryDone = 0;
+    foreach ($allHistoryRows as $hRow) {
+        if ((int)$hRow['progress'] >= 100 || $hRow['status'] === 'Completed') {
+            $allHistoryDone++;
+        }
     }
     ?>
     <!DOCTYPE html>
@@ -554,7 +563,17 @@
 
                         <!-- Detailed Daily Breakdown -->
                         <div>
-                            <h6 class="text-sm font-bold text-gray-800 mb-3">Detailed Daily Breakdown</h6>
+                            <div class="flex justify-between items-center mb-3 gap-2">
+                                <h6 class="text-sm font-bold text-gray-800">Detailed Daily Breakdown</h6>
+                                <?php if (!empty($historyByDate)): ?>
+                                    <button type="button" onclick="downloadAllPlannerPdf()" class="bg-red-500 hover:bg-red-700 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+                                        </svg>
+                                        Download All
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                             
                             <div class="space-y-4 max-h-80 overflow-y-auto pr-1">
                                 <?php if (empty($historyByDate)): ?>
@@ -581,21 +600,28 @@
                                                     </button>
                                                 </div>
                                             </div>
-                                            <ul class="divide-y divide-gray-100 text-xs">
-                                                <?php foreach ($tasks as $task): 
-                                                    $isTaskDone = ((int)$task['progress'] >= 100 || $task['status'] === 'Completed');
-                                                ?>
-                                                    <li class="py-2 flex justify-between items-center">
-                                                        <span class="text-gray-700 font-medium">
-                                                            <?php echo htmlspecialchars($task['subject_name']); ?>
-                                                            <span class="text-gray-400 font-normal ml-1">(<?php echo htmlspecialchars($task['start_time'] . ' - ' . $task['end_time']); ?>)</span>
-                                                        </span>
-                                                        <span class="font-bold <?php echo $isTaskDone ? 'text-emerald-600' : 'text-amber-600'; ?>">
-                                                            <?php echo $isTaskDone ? 'Completed' : 'Pending'; ?>
-                                                        </span>
-                                                    </li>
-                                                <?php endforeach; ?>
-                                            </ul>
+                                           <ul class="divide-y divide-gray-100 text-xs">
+                                            <?php foreach ($tasks as $task): 
+                                                $isTaskDone = ((int)$task['progress'] >= 100 || $task['status'] === 'Completed');
+                                                
+                                                // Format time strings (e.g., "05:40:00" -> "05:40 AM")
+                                                $startTimeFormatted = !empty($task['start_time']) ? date('h:i A', strtotime($task['start_time'])) : '';
+                                                $endTimeFormatted = !empty($task['end_time']) ? date('h:i A', strtotime($task['end_time'])) : '';
+                                                $timeRange = trim($startTimeFormatted . ' - ' . $endTimeFormatted, ' -');
+                                            ?>
+                                                <li class="py-2 flex justify-between items-center">
+                                                    <span class="text-gray-700 font-medium">
+                                                        <?php echo htmlspecialchars($task['subject_name']); ?>
+                                                        <?php if ($timeRange): ?>
+                                                            <span class="text-gray-400 font-normal ml-1">(<?php echo htmlspecialchars($timeRange); ?>)</span>
+                                                        <?php endif; ?>
+                                                    </span>
+                                                    <span class="font-bold <?php echo $isTaskDone ? 'text-emerald-600' : 'text-amber-600'; ?>">
+                                                        <?php echo $isTaskDone ? 'Completed' : 'Pending'; ?>
+                                                    </span>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
                                         </div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -612,6 +638,9 @@
 
         <!-- JavaScript Handlers -->
         <script>
+            const PLANNER_TOTAL_ALL = <?php echo (int) $allHistoryTotal; ?>;
+            const PLANNER_DONE_ALL = <?php echo (int) $allHistoryDone; ?>;
+
             function toggleTimeInputs(id) {
                 const checkbox = document.getElementById('sub-' + id);
                 const card = document.getElementById('card-' + id);
@@ -643,97 +672,140 @@
                 });
             });
 
-          function downloadPlannerDayPdf(dateKey) {
-    const source = document.querySelector('[data-report-date="' + dateKey + '"]');
-    if (!source) return;
+            // Shared print-window styling used by both single-day and all-days downloads
+            function buildPlannerReportHtml(title, bodyHtml, showGrandTotal) {
+                return `
+                    <html>
+                        <head>
+                            <title>${title}</title>
+                            <style>
+                                * { box-sizing: border-box; }
+                                body {
+                                    font-family: Arial, sans-serif;
+                                    margin: 0;
+                                    padding: 24px;
+                                    color: #1f2937;
+                                    font-size: 16px;
+                                }
+                                .toolbar {
+                                    display: flex;
+                                    justify-content: flex-end;
+                                    margin-bottom: 16px;
+                                }
+                                .close-btn {
+                                    width: 34px;
+                                    height: 34px;
+                                    border-radius: 999px;
+                                    border: 1px solid #e5e7eb;
+                                    background: #f3f4f6;
+                                    color: #374151;
+                                    font-size: 18px;
+                                    font-weight: bold;
+                                    line-height: 1;
+                                    cursor: pointer;
+                                }
+                                .close-btn:hover { background: #e5e7eb; }
+                                .print-btn {
+                                    border: none;
+                                    background: #2563eb;
+                                    color: #fff;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    padding: 8px 16px;
+                                    border-radius: 8px;
+                                    cursor: pointer;
+                                    margin-right: 8px;
+                                }
+                                .print-btn:hover { background: #1d4ed8; }
+                                .report-heading {
+                                    font-size: 22px;
+                                    font-weight: 700;
+                                    margin: 0 0 20px 0;
+                                }
+                                .border { border: 1px solid #e5e7eb; }
+                                .rounded-2xl { border-radius: 16px; }
+                                .p-4 { padding: 20px; }
+                                .space-y-4 > * + * { margin-top: 16px; }
+                                .text-xs { font-size: 16px; }
+                                .font-bold { font-weight: 700; }
+                                .font-semibold { font-weight: 600; }
+                                .text-gray-700 { color: #374151; }
+                                .text-gray-800 { color: #1f2937; }
+                                .text-amber-600 { color: #d97706; }
+                                .text-emerald-600 { color: #059669; }
+                                .text-blue-600 { color: #2563eb; }
+                                .bg-gray-50 { background: #f9fafb; }
+                                .bg-blue-50 { background: #eff6ff; }
+                                .border-b { border-bottom: 1px solid #e5e7eb; }
+                                .pb-2 { padding-bottom: 12px; }
+                                .mb-2 { margin-bottom: 12px; }
+                                .flex { display: flex; }
+                                .justify-between { justify-content: space-between; }
+                                .items-center { align-items: center; }
+                                .gap-2 { gap: 8px; }
+                                ul { list-style: none; padding: 0; margin: 0; }
+                                li { padding: 10px 0; font-size: 16px; }
+                                .day-block { margin-bottom: 20px; }
+                                .grand-total {
+                                    margin-top: 24px;
+                                    padding-top: 16px;
+                                    border-top: 2px solid #1f2937;
+                                    display: flex;
+                                    justify-content: space-between;
+                                    font-size: 18px;
+                                    font-weight: 700;
+                                }
+                                @media print {
+                                    .toolbar { display: none; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="toolbar">
+                                <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+                                <button class="close-btn" onclick="window.close()" aria-label="Close">&times;</button>
+                            </div>
+                            <h1 class="report-heading">${title}</h1>
+                            ${bodyHtml}
+                            ${showGrandTotal ? `
+                                <div class="grand-total">
+                                    <span>Grand Total (All Days)</span>
+                                    <span class="text-emerald-600">${PLANNER_DONE_ALL} / ${PLANNER_TOTAL_ALL} Completed</span>
+                                </div>
+                            ` : ''}
+                        </body>
+                    </html>
+                `;
+            }
 
-    const clone = source.cloneNode(true);
-    clone.querySelectorAll('button').forEach((btn) => btn.remove());
+            function downloadPlannerDayPdf(dateKey) {
+                const source = document.querySelector('[data-report-date="' + dateKey + '"]');
+                if (!source) return;
 
-    const popup = window.open('', '_blank', 'width=900,height=700');
-    popup.document.write(`
-        <html>
-            <head>
-                <title>Planner Report ${dateKey}</title>
-                <style>
-                    * { box-sizing: border-box; }
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 0;
-                        padding: 24px;
-                        color: #1f2937;
-                        font-size: 16px;
-                    }
-                    .toolbar {
-                        display: flex;
-                        justify-content: flex-end;
-                        margin-bottom: 16px;
-                    }
-                    .close-btn {
-                        width: 34px;
-                        height: 34px;
-                        border-radius: 999px;
-                        border: 1px solid #e5e7eb;
-                        background: #f3f4f6;
-                        color: #374151;
-                        font-size: 18px;
-                        font-weight: bold;
-                        line-height: 1;
-                        cursor: pointer;
-                    }
-                    .close-btn:hover { background: #e5e7eb; }
-                    .print-btn {
-                        border: none;
-                        background: #2563eb;
-                        color: #fff;
-                        font-size: 14px;
-                        font-weight: 600;
-                        padding: 8px 16px;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        margin-right: 8px;
-                    }
-                    .print-btn:hover { background: #1d4ed8; }
-                    .border { border: 1px solid #e5e7eb; }
-                    .rounded-2xl { border-radius: 16px; }
-                    .p-4 { padding: 20px; }
-                    .space-y-4 > * + * { margin-top: 16px; }
-                    .text-xs { font-size: 16px; }
-                    .font-bold { font-weight: 700; }
-                    .font-semibold { font-weight: 600; }
-                    .text-gray-700 { color: #374151; }
-                    .text-gray-800 { color: #1f2937; }
-                    .text-amber-600 { color: #d97706; }
-                    .text-emerald-600 { color: #059669; }
-                    .text-blue-600 { color: #2563eb; }
-                    .bg-gray-50 { background: #f9fafb; }
-                    .bg-blue-50 { background: #eff6ff; }
-                    .border-b { border-bottom: 1px solid #e5e7eb; }
-                    .pb-2 { padding-bottom: 12px; }
-                    .mb-2 { margin-bottom: 12px; }
-                    .flex { display: flex; }
-                    .justify-between { justify-content: space-between; }
-                    .items-center { align-items: center; }
-                    .gap-2 { gap: 8px; }
-                    ul { list-style: none; padding: 0; margin: 0; }
-                    li { padding: 10px 0; font-size: 16px; }
-                    @media print {
-                        .toolbar { display: none; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="toolbar">
-                    <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
-                    <button class="close-btn" onclick="window.close()" aria-label="Close">&times;</button>
-                </div>
-                ${clone.outerHTML}
-            </body>
-        </html>
-    `);
-    popup.document.close();
-}
+                const clone = source.cloneNode(true);
+                clone.querySelectorAll('button').forEach((btn) => btn.remove());
 
+                const popup = window.open('', '_blank', 'width=900,height=700');
+                popup.document.write(buildPlannerReportHtml('Planner Report ' + dateKey, clone.outerHTML, false));
+                popup.document.close();
+            }
+
+            // Download a single combined report covering every day's planner breakdown
+            function downloadAllPlannerPdf() {
+                const cards = document.querySelectorAll('.planner-day-card');
+                if (!cards.length) return;
+
+                let combinedHtml = '';
+                cards.forEach(card => {
+                    const clone = card.cloneNode(true);
+                    clone.querySelectorAll('button').forEach((btn) => btn.remove());
+                    combinedHtml += `<div class="day-block">${clone.outerHTML}</div>`;
+                });
+
+                const popup = window.open('', '_blank', 'width=900,height=700');
+                popup.document.write(buildPlannerReportHtml('Full Planner Report (All Days)', combinedHtml, true));
+                popup.document.close();
+            }
         </script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     </body>
