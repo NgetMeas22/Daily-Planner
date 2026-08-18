@@ -38,6 +38,25 @@ if ($hasMonthlyBudget && $hasMonthlyBudget->num_rows === 0) {
     $conn->query("ALTER TABLE users ADD COLUMN monthly_budget DECIMAL(10,2) NOT NULL DEFAULT 150.00 AFTER avatar");
 }
 
+// Store the profile picture itself (base64 data URI) inside the database.
+$hasAvatarData = $conn->query("SHOW COLUMNS FROM users LIKE 'avatar_data'");
+if ($hasAvatarData && $hasAvatarData->num_rows === 0) {
+    $conn->query("ALTER TABLE users ADD COLUMN avatar_data MEDIUMTEXT NULL AFTER avatar");
+}
+
+$conn->query("
+    CREATE TABLE IF NOT EXISTS notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        content TEXT NOT NULL,
+        type ENUM('simple','secure') NOT NULL DEFAULT 'simple',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_notes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+");
+
 $conn->query("
     CREATE TABLE IF NOT EXISTS subjects (
         id INT AUTO_INCREMENT PRIMARY KEY,

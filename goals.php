@@ -67,6 +67,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_goal'])) {
 }
 
 $goals = $conn->query("SELECT * FROM goals WHERE user_id = {$userId} ORDER BY id DESC")->fetch_all(MYSQLI_ASSOC);
+
+// Goal summary stats (total, in progress, completed, overdue)
+$today = date('Y-m-d');
+$goalStats = ['total' => count($goals), 'in_progress' => 0, 'completed' => 0, 'overdue' => 0];
+foreach ($goals as $goal) {
+    if ($goal['status'] === 'Completed') {
+        $goalStats['completed']++;
+    } else {
+        $goalStats['in_progress']++;
+        if (!empty($goal['deadline']) && $goal['deadline'] < $today) {
+            $goalStats['overdue']++;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo htmlspecialchars($currentLang); ?>">
@@ -83,6 +97,11 @@ $goals = $conn->query("SELECT * FROM goals WHERE user_id = {$userId} ORDER BY id
         .badge-priority-High { background-color: #ef4444; }
         .badge-priority-Medium { background-color: #f59e0b; }
         .badge-priority-Low { background-color: #10b981; }
+        .badge-overdue { background-color: #dc2626; }
+        .card-overdue { border-color: #dc2626 !important; box-shadow: 0 4px 14px rgba(220,38,38,.15); }
+        .goal-bar-overdue { background-color: #dc2626 !important; }
+        .text-overdue { color: #dc2626; }
+        .stat-mini { border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; padding: 14px 16px; }
     </style>
 </head>
 <body>
@@ -99,6 +118,34 @@ $goals = $conn->query("SELECT * FROM goals WHERE user_id = {$userId} ORDER BY id
     <?php if ($errors): ?>
         <div class="alert alert-danger py-2"><?= htmlspecialchars(implode(' ', $errors)) ?></div>
     <?php endif; ?>
+
+    <!-- Goal Summary Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Total Goals</div>
+                <div class="fs-3 fw-bold"><?= $goalStats['total'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">In Progress</div>
+                <div class="fs-3 fw-bold text-info"><?= $goalStats['in_progress'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Completed</div>
+                <div class="fs-3 fw-bold text-success"><?= $goalStats['completed'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Overdue</div>
+                <div class="fs-3 fw-bold text-overdue"><?= $goalStats['overdue'] ?></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Add Goal Form -->
     <div class="card soft-card mb-4">
@@ -153,16 +200,34 @@ $goals = $conn->query("SELECT * FROM goals WHERE user_id = {$userId} ORDER BY id
             $barColor = $progress >= 100 ? 'bg-success' : ($progress > 50 ? 'bg-info' : 'bg-warning');
             $priority = $goal['priority'] ?? 'Medium';
             $category = $goal['category'] ?? 'General';
-            
+            $isOverdue = $goal['status'] !== 'Completed' && !empty($goal['deadline']) && $goal['deadline'] < $today;
+
+            if ($isOverdue) {
+                $barColor = 'goal-bar-overdue';
+            }
+
+            $daysLeft = '';
+            if (!empty($goal['deadline'])) {
+                $diff = (int) ((strtotime($goal['deadline']) - strtotime($today)) / 86400);
+                $daysLeft = $goal['status'] === 'Completed'
+                    ? ''
+                    : ($isOverdue ? (abs($diff) . ' day' . (abs($diff) === 1 ? '' : 's') . ' overdue') : ($diff . ' day' . ($diff === 1 ? '' : 's') . ' left'));
+            }
+
             // Check if priority matches predefined badge styling, fallback to primary badge
             $badgeClass = in_array($priority, ['High', 'Medium', 'Low']) ? "badge-priority-{$priority}" : "bg-primary";
         ?>
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="card soft-card h-100">
+                <div class="card soft-card h-100 <?= $isOverdue ? 'card-overdue' : '' ?>">
                     <div class="card-body vstack">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <span class="badge bg-secondary opacity-75"><?= htmlspecialchars($category) ?></span>
-                            <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($priority) ?></span>
+                            <span class="d-flex gap-1 align-items-center">
+                                <?php if ($isOverdue): ?>
+                                    <span class="badge badge-overdue">Overdue</span>
+                                <?php endif; ?>
+                                <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($priority) ?></span>
+                            </span>
                         </div>
 
                         <h5 class="fw-bold mb-2"><?= htmlspecialchars($goal['goal_name']) ?></h5>
@@ -170,7 +235,12 @@ $goals = $conn->query("SELECT * FROM goals WHERE user_id = {$userId} ORDER BY id
                         <div class="text-muted small mb-3">
                             <div>Target: <strong><?= (int)$goal['target_hours'] ?> hrs</strong> | Done: <strong><?= (int)$goal['completed_hours'] ?> hrs</strong></div>
                             <?php if ($goal['deadline']): ?>
-                                <div>Deadline: <?= htmlspecialchars($goal['deadline']) ?></div>
+                                <div class="<?= $isOverdue ? 'text-overdue fw-semibold' : '' ?>">
+                                    Deadline: <?= htmlspecialchars($goal['deadline']) ?>
+                                    <?php if ($daysLeft): ?>
+                                        <span class="fw-semibold">(<?= htmlspecialchars($daysLeft) ?>)</span>
+                                    <?php endif; ?>
+                                </div>
                             <?php endif; ?>
                         </div>
 

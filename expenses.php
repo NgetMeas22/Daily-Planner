@@ -209,7 +209,7 @@ $incomeKhr = $incomeUsd * $khrRate;
         </div>
     <?php endif; ?>
 
-   <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
     <!-- Today Card -->
     <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
         <div>
@@ -224,6 +224,22 @@ $incomeKhr = $incomeUsd * $khrRate;
             </div>
         </div>
         <p class="text-xs text-gray-500 mt-4"><?php echo count($dateItems); ?> item(s) logged on this date</p>
+    </div>
+
+    <!-- This Month Card -->
+    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+        <div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent (This Month)</p>
+            <div class="mt-2 space-y-0.5">
+                <div class="text-3xl font-extrabold text-red-500">
+                    - $<?php echo number_format($monthlyExpenseTotal, 2); ?>
+                </div>
+                <div class="text-sm font-semibold text-emerald-600">
+                    + $<?php echo number_format($monthlyIncomeTotal, 2); ?> income
+                </div>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-4"><?php echo htmlspecialchars(date('F Y', strtotime($selectedDate))); ?> totals</p>
     </div>
 
     <!-- All-Time Card -->

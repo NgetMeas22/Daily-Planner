@@ -4,41 +4,34 @@ if (!isset($activePage)) {
 }
 $currentLang = $_SESSION['lang'] ?? 'en';
 
-// Handle Profile Picture Upload Logic
+// Handle Profile Picture Upload Logic (image is stored INSIDE the database as a base64 data URI)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['user_avatar_file'])) {
     $file = $_FILES['user_avatar_file'];
 
-    if ($file['error'] === UPLOAD_ERR_OK) {
+    if ($file['error'] === UPLOAD_ERR_OK && $file['size'] > 0 && $file['size'] <= 2 * 1024 * 1024) {
         $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
-        if (in_array($fileExt, $allowedExtensions)) {
-            $uploadDir = 'uploads/avatars/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
+        if (in_array($fileExt, $allowedExtensions) && isset($_SESSION['user_id'])) {
+            $mimeMap = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'];
+            $mime = $mimeMap[$fileExt] ?? (mime_content_type($file['tmp_name']) ?: 'image/jpeg');
+            $dataUri = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($file['tmp_name']));
 
-            $userId = $_SESSION['user_id'] ?? 'user';
-            $fileName = 'avatar_' . $userId . '_' . time() . '.' . $fileExt;
-            $targetPath = $uploadDir . $fileName;
+            // Update Session
+            $_SESSION['user_avatar'] = $dataUri;
 
-            if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-                // Update Session
-                $_SESSION['user_avatar'] = $targetPath;
-
-                // Update Database (if $conn and $userId are available in scope)
-                if (isset($conn) && isset($_SESSION['user_id'])) {
-                    $stmt = $conn->prepare("UPDATE users SET avatar = ? WHERE id = ?");
-                    if ($stmt) {
-                        $stmt->bind_param("si", $targetPath, $_SESSION['user_id']);
-                        $stmt->execute();
-                    }
+            // Store the image in the database
+            if (isset($conn)) {
+                $stmt = $conn->prepare("UPDATE users SET avatar_data = ?, avatar = NULL WHERE id = ?");
+                if ($stmt) {
+                    $stmt->bind_param("si", $dataUri, $_SESSION['user_id']);
+                    $stmt->execute();
                 }
-
-                // Refresh page to prevent form resubmission
-                header("Location: " . $_SERVER['REQUEST_URI']);
-                exit;
             }
+
+            // Refresh page to prevent form resubmission
+            header("Location: " . $_SERVER['REQUEST_URI']);
+            exit;
         }
     }
 }
@@ -439,6 +432,16 @@ $userInitial = strtoupper(substr($userName, 0, 1));
                         <?php echo t('expenses'); ?>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link px-3 <?php echo $activePage === 'notes' ? 'active' : ''; ?>" href="notes.php">
+                        <?php echo t('notes'); ?>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link px-3 <?php echo $activePage === 'profile' ? 'active' : ''; ?>" href="profile.php">
+                        <?php echo t('profile'); ?>
+                    </a>
+                </li>
             </ul>
 
             <div class="navbar-panel-section-label d-lg-none"><?php echo t('account') ?? 'Account'; ?></div>
@@ -466,7 +469,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
                             </div>
                         </label>
                     </form>
-                    <span class="user-profile-name"><?php echo htmlspecialchars($userName); ?></span>
+                    <a class="user-profile-name text-decoration-none" href="profile.php" title="<?php echo t('profile'); ?>"><?php echo htmlspecialchars($userName); ?></a>
                 </div>
 
                 <!-- Language Switcher -->

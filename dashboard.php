@@ -107,6 +107,24 @@ $counts = [
     'expenses' => (int) ($conn->query("SELECT COUNT(*) AS c FROM expenses WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0),
 ];
 
+// ---- Dynamic stat-card percentages (dashboards should reflect real data) ----
+$subjectsUsed = (int) ($conn->query("SELECT COUNT(DISTINCT subject_id) AS c FROM planner WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0);
+$subjectsPct = $counts['subjects'] > 0 ? (int) round(($subjectsUsed / $counts['subjects']) * 100) : 0;
+
+$plannerDone = (int) ($conn->query("SELECT COUNT(*) AS c FROM planner WHERE user_id = {$userId} AND (progress >= 100 OR status = 'Completed')")->fetch_assoc()['c'] ?? 0);
+$plannerPct = $counts['planner'] > 0 ? (int) round(($plannerDone / $counts['planner']) * 100) : 0;
+
+$goalsDone = (int) ($conn->query("SELECT COUNT(*) AS c FROM goals WHERE user_id = {$userId} AND status = 'Completed'")->fetch_assoc()['c'] ?? 0);
+$goalsPct = $counts['goals'] > 0 ? (int) round(($goalsDone / $counts['goals']) * 100) : 0;
+
+$budget = (float) ($conn->query("SELECT monthly_budget FROM users WHERE id = {$userId}")->fetch_assoc()['monthly_budget'] ?? 0);
+$spentThisMonth = (float) ($conn->query("SELECT COALESCE(SUM(amount), 0) AS c FROM expenses WHERE user_id = {$userId} AND type = 'expense' AND expense_date BETWEEN '" . date('Y-m-01') . "' AND '" . date('Y-m-t') . "'")->fetch_assoc()['c'] ?? 0);
+$expensesPct = $budget > 0 ? (int) round(($spentThisMonth / $budget) * 100) : 0;
+
+$ringOffset = fn($pct) => (string) round(113 - 113 * $pct / 100, 1);
+$pctText = fn($pct) => $pct . '%';
+$overBudget = $expensesPct >= 100;
+
 // Fetch recent records
 $subjects = $conn->query("SELECT id, name, description FROM subjects WHERE user_id = {$userId} ORDER BY id DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $goals = $conn->query("SELECT id, goal_name, target_hours, progress FROM goals WHERE user_id = {$userId} ORDER BY id DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
@@ -566,15 +584,15 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 <div class="stat-progress-ring">
                     <svg viewBox="0 0 42 42">
                         <circle class="bg-circle" cx="21" cy="21" r="18"/>
-                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 65;"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: <?= $ringOffset($subjectsPct) ?>;"/>
                     </svg>
-                    <span class="stat-progress-text">+42%</span>
+                    <span class="stat-progress-text"><?= $pctText($subjectsPct) ?></span>
                 </div>
             </div>
             <div>
                 <div class="stat-label-modern mb-1">Subjects</div>
                 <div class="stat-value-modern"><?= $counts['subjects'] ?></div>
-                <div class="stat-subtext-modern mt-1">Active in system</div>
+                <div class="stat-subtext-modern mt-1"><?= $subjectsUsed ?> used in planner</div>
             </div>
         </div>
     </div>
@@ -589,15 +607,15 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 <div class="stat-progress-ring">
                     <svg viewBox="0 0 42 42">
                         <circle class="bg-circle" cx="21" cy="21" r="18"/>
-                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 88;"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: <?= $ringOffset($plannerPct) ?>;"/>
                     </svg>
-                    <span class="stat-progress-text">+22%</span>
+                    <span class="stat-progress-text"><?= $pctText($plannerPct) ?></span>
                 </div>
             </div>
             <div>
                 <div class="stat-label-modern mb-1">Planner</div>
                 <div class="stat-value-modern"><?= $counts['planner'] ?></div>
-                <div class="stat-subtext-modern mt-1">Scheduled events</div>
+                <div class="stat-subtext-modern mt-1"><?= $plannerDone ?> tasks done</div>
             </div>
         </div>
     </div>
@@ -612,15 +630,15 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 <div class="stat-progress-ring">
                     <svg viewBox="0 0 42 42">
                         <circle class="bg-circle" cx="21" cy="21" r="18"/>
-                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 105;"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: <?= $ringOffset($goalsPct) ?>;"/>
                     </svg>
-                    <span class="stat-progress-text negative">-5%</span>
+                    <span class="stat-progress-text"><?= $pctText($goalsPct) ?></span>
                 </div>
             </div>
             <div>
                 <div class="stat-label-modern mb-1">Goals</div>
                 <div class="stat-value-modern"><?= $counts['goals'] ?></div>
-                <div class="stat-subtext-modern mt-1">In progress</div>
+                <div class="stat-subtext-modern mt-1"><?= $goalsDone ?> completed</div>
             </div>
         </div>
     </div>
@@ -635,15 +653,15 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 <div class="stat-progress-ring">
                     <svg viewBox="0 0 42 42">
                         <circle class="bg-circle" cx="21" cy="21" r="18"/>
-                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: 98;"/>
+                        <circle class="val-circle" cx="21" cy="21" r="18" style="stroke-dashoffset: <?= $ringOffset(min(100, $expensesPct)) ?>;"/>
                     </svg>
-                    <span class="stat-progress-text">+5%</span>
+                    <span class="stat-progress-text <?= $overBudget ? 'negative' : '' ?>"><?= $pctText(min(100, $expensesPct)) ?></span>
                 </div>
             </div>
             <div>
                 <div class="stat-label-modern mb-1">Expenses</div>
                 <div class="stat-value-modern"><?= $counts['expenses'] ?></div>
-                <div class="stat-subtext-modern mt-1">Tracked this month</div>
+                <div class="stat-subtext-modern mt-1">Budget used this month</div>
             </div>
         </div>
     </div>
@@ -655,7 +673,7 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
             <div class="panel">
                 <div class="panel-head">
                     <div>
-                        <h6 class="mb-1 fw-bold font-display mb-0">Weekly Study Hours</h6>
+                        <h6 class="mb-1 fw-bold font-display mb-0"><?= htmlspecialchars($studyChart['label']) ?> Study Hours</h6>
                         <small class="text-secondary"><?= htmlspecialchars($studyChart['summary']) ?></small>
                     </div>
                     <div class="range-switch" aria-label="Study time range">

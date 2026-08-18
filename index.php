@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($password === '') $errors[] = 'Password is required.';
 
     if (!$errors) {
-        $stmt = $conn->prepare('SELECT id, fullname, password FROM users WHERE username = ? LIMIT 1');
+        $stmt = $conn->prepare('SELECT id, fullname, password, avatar, avatar_data FROM users WHERE username = ? LIMIT 1');
         $stmt->bind_param('s', $username);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -27,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_name'] = $user['fullname'];
+                $_SESSION['user_avatar'] = $user['avatar_data'] ?: $user['avatar'];
                 redirect('dashboard.php');
             } else {
                 $errors[] = 'Invalid username or password.';
