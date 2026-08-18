@@ -151,8 +151,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_note'])) {
             $pwRow = $pwStmt->get_result()->fetch_assoc();
 
             if ($pwRow && password_verify($password, $pwRow['password'])) {
-                $_SESSION['unlocked_notes'][$id] = true;
-                $success = 'Note unlocked.';
+                $_SESSION['unlocked_notes'][$id] = time();
+                $success = 'Note unlocked for 1 minute.';
                 redirect('notes.php');
             } else {
                 $errors[] = 'Incorrect password.';
@@ -213,6 +213,8 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
         .badge-simple { background: #d1fae5; color: #059669; }
         .note-date { font-size: .74rem; color: #94a3b8; }
         .note-card.d-none { display: none !important; }
+        .note-img { cursor: pointer; transition: opacity .15s; }
+        .note-img:hover { opacity: .85; }
     </style>
 </head>
 <body>
@@ -303,7 +305,7 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
                             <h6 class="fw-bold mb-0"><?= htmlspecialchars($note['title']) ?></h6>
                         </div>
                         <?php if ($note['image_data']): ?>
-                            <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2" style="max-height:180px; object-fit:cover; width:100%;">
+                            <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2 note-img" style="max-height:180px; object-fit:cover; width:100%;" onclick="openImage(this)">
                         <?php endif; ?>
                         <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
                         <p class="note-date mb-2">
@@ -338,7 +340,11 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
     </div>
     <div class="row g-3">
         <?php foreach ($secureNotes as $note):
-            $unlocked = isset($_SESSION['unlocked_notes'][(int) $note['id']]);
+            $unlocked = isset($_SESSION['unlocked_notes'][(int) $note['id']])
+                && (time() - $_SESSION['unlocked_notes'][(int) $note['id']] <= 60);
+            if (!$unlocked && isset($_SESSION['unlocked_notes'][(int) $note['id']])) {
+                unset($_SESSION['unlocked_notes'][(int) $note['id']]);
+            }
         ?>
             <div class="col-12 col-md-6 col-lg-4 note-item" data-title="<?= $unlocked ? htmlspecialchars(mb_strtolower($note['title'])) : '' ?>">
                 <div class="card note-card secure h-100">
@@ -356,7 +362,7 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
 
                         <?php if ($unlocked): ?>
                             <?php if ($note['image_data']): ?>
-                                <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2" style="max-height:180px; object-fit:cover; width:100%;">
+                                <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2 note-img" style="max-height:180px; object-fit:cover; width:100%;" onclick="openImage(this)">
                             <?php endif; ?>
                             <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
                             <p class="note-date mb-2">
@@ -412,8 +418,26 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
     </div>
 </div>
 
+<!-- Full-image viewer (lightbox) -->
+<div class="modal fade" id="fullImageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0" style="background:transparent;">
+            <div class="text-end mb-2">
+                <button type="button" class="btn btn-sm btn-dark rounded-3" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Close</button>
+            </div>
+            <div class="modal-body p-0 rounded-4 overflow-hidden" style="background:#0f172a;">
+                <img id="fullImageModalImg" src="" alt="Full image" class="w-100" style="max-height:82vh; object-fit:contain; display:block;">
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+function openImage(img) {
+    document.getElementById('fullImageModalImg').src = img.src;
+    new bootstrap.Modal(document.getElementById('fullImageModal')).show();
+}
 document.getElementById('noteSearch').addEventListener('input', function () {
     const q = this.value.trim().toLowerCase();
     document.querySelectorAll('.note-item').forEach(function (item) {
