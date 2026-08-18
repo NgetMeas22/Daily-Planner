@@ -25,6 +25,25 @@ function format_note_date(?string $datetime): string {
     return date('M j, Y \a\t g:i A', $ts);
 }
 
+// Process the optional note image upload.
+// Returns: string data-URI on success, null when no file sent, false when the file is invalid.
+function upload_note_image()
+{
+    if (!isset($_FILES['note_image']) || $_FILES['note_image']['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    $file = $_FILES['note_image'];
+    if ($file['size'] <= 0 || $file['size'] > 2 * 1024 * 1024) {
+        return false;
+    }
+    $allowed = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'];
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!isset($allowed[$ext])) {
+        return false;
+    }
+    return 'data:' . $allowed[$ext] . ';base64,' . base64_encode(file_get_contents($file['tmp_name']));
+}
+
 // --- ADD NOTE ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_note'])) {
     if (!csrf_valid()) {
@@ -41,10 +60,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_note'])) {
         } elseif (mb_strlen($content) > 10000) {
             $errors[] = 'Content must be 10,000 characters or fewer.';
         } else {
-            $stmt = $conn->prepare('INSERT INTO notes (user_id, title, content, type) VALUES (?, ?, ?, ?)');
-            $stmt->bind_param('isss', $userId, $title, $content, $type);
-            $stmt->execute();
-            redirect('notes.php');
+            $image = upload_note_image();
+
+            if ($image === false) {
+                $errors[] = 'Invalid image. Only JPG, PNG, WEBP or GIF files up to 2MB are allowed.';
+            } else {
+                $stmt = $conn->prepare('INSERT INTO notes (user_id, title, content, image_data, type) VALUES (?, ?, ?, ?, ?)');
+                $stmt->bind_param('issss', $userId, $title, $content, $image, $type);
+                $stmt->execute();
+                redirect('notes.php');
+            }
         }
     }
 }
@@ -66,10 +91,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_note'])) {
         } elseif (mb_strlen($content) > 10000) {
             $errors[] = 'Content must be 10,000 characters or fewer.';
         } else {
-            $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, updated_at = NOW() WHERE id = ? AND user_id = ?');
-            $stmt->bind_param('sssii', $title, $content, $type, $id, $userId);
-            $stmt->execute();
-            redirect('notes.php');
+            $newImage = upload_note_image();
+
+            if ($newImage === false) {
+                $errors[] = 'Invalid image. Only JPG, PNG, WEBP or GIF files up to 2MB are allowed.';
+            } elseif (isset($_POST['remove_image'])) {
+                // User chose to remove the existing image.
+                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, image_data = NULL, updated_at = NOW() WHERE id = ? AND user_id = ?');
+                $stmt->bind_param('sssii', $title, $content, $type, $id, $userId);
+                $stmt->execute();
+                redirect('notes.php');
+            } elseif ($newImage !== null) {
+                // A new image was uploaded — replace the old one.
+                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, image_data = ?, updated_at = NOW() WHERE id = ? AND user_id = ?');
+                $stmt->bind_param('ssssii', $title, $content, $type, $newImage, $id, $userId);
+                $stmt->execute();
+                redirect('notes.php');
+            } else {
+                // No new image — keep the existing one.
+                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, updated_at = NOW() WHERE id = ? AND user_id = ?');
+                $stmt->bind_param('sssii', $title, $content, $type, $id, $userId);
+                $stmt->execute();
+                redirect('notes.php');
+            }
         }
     }
 }
@@ -134,14 +178,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lock_note'])) {
 $editNote = null;
 if (isset($_GET['edit'])) {
     $editId = (int) $_GET['edit'];
-    $stmt = $conn->prepare('SELECT id, title, content, type FROM notes WHERE id = ? AND user_id = ?');
+    $stmt = $conn->prepare('SELECT id, title, content, image_data, type FROM notes WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $editId, $userId);
     $stmt->execute();
     $editNote = $stmt->get_result()->fetch_assoc();
 }
 
 // --- FETCH ALL NOTES ---
-$stmt = $conn->prepare('SELECT id, title, content, type, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC');
+$stmt = $conn->prepare('SELECT id, title, content, image_data, type, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC');
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $notes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -198,7 +242,7 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
             <h6 class="card-subtitle text-uppercase text-muted fw-bold mb-3 small">
                 <?= $editNote ? 'Edit Note' : 'Add New Note' ?>
             </h6>
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                 <input type="hidden" name="<?= $editNote ? 'edit_note' : 'add_note' ?>" value="1">
                 <?php if ($editNote): ?>
@@ -220,6 +264,19 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
                     <div class="col-12">
                         <label class="form-label small fw-semibold text-secondary">Content</label>
                         <textarea class="form-control rounded-3" name="content" rows="4" maxlength="10000" placeholder="Write your note here..." required><?= $editNote ? htmlspecialchars($editNote['content']) : '' ?></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold text-secondary">Image (optional, stored in DB)</label>
+                        <?php if ($editNote && $editNote['image_data']): ?>
+                            <div class="d-flex align-items-center gap-3 mb-2">
+                                <img src="<?= htmlspecialchars($editNote['image_data']) ?>" alt="Note image" class="rounded-3" style="width:90px;height:90px;object-fit:cover;border:1px solid #e2e8f0;">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="remove_image" value="1" id="removeNoteImage">
+                                    <label class="form-check-label small" for="removeNoteImage">Remove image</label>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        <input type="file" class="form-control" name="note_image" accept="image/*">
                     </div>
                     <div class="col-12 d-flex gap-2">
                         <button class="btn btn-primary rounded-3 fw-medium px-4"><?= $editNote ? 'Update Note' : 'Save Note' ?></button>
@@ -245,6 +302,9 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <h6 class="fw-bold mb-0"><?= htmlspecialchars($note['title']) ?></h6>
                         </div>
+                        <?php if ($note['image_data']): ?>
+                            <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2" style="max-height:180px; object-fit:cover; width:100%;">
+                        <?php endif; ?>
                         <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
                         <p class="note-date mb-2">
                             <?php if ($note['created_at'] !== $note['updated_at']): ?>
@@ -295,6 +355,9 @@ $secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
                         </div>
 
                         <?php if ($unlocked): ?>
+                            <?php if ($note['image_data']): ?>
+                                <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2" style="max-height:180px; object-fit:cover; width:100%;">
+                            <?php endif; ?>
                             <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
                             <p class="note-date mb-2">
                                 <?php if ($note['created_at'] !== $note['updated_at']): ?>

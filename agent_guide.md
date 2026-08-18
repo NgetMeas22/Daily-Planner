@@ -10,7 +10,8 @@ A **student-focused "Daily Planner" web app** built with **procedural PHP + MySQ
 - **Planner** — daily study schedule: tasks linked to a subject with a date, day, time range, topic/goal, progress and status.
 - **Goals** — long-term goals with target hours, logged hours, auto-computed progress %, category, priority, deadline. Overdue goals (past deadline & not completed) are highlighted red.
 - **Expenses** — expenses AND income in dual currency (USD/KHR), per-user monthly budget, remaining-budget calculation, per-day/month/all-time totals.
-- **Notes** — two kinds of notes stored in DB: **Simple** (visible immediately) and **Secure** (content is hidden until the user enters their account password to unlock it).
+- **Notes** — two kinds of notes stored in DB: **Simple** (visible immediately) and **Secure** (content is hidden until the user enters their account password to unlock it). Both can store an image directly in the DB.
+- **Settings** — functional settings page (`setting.php`): per-user preferences (deep work mode, daily reminders, default focus duration) persisted in the `settings` table, plus account overview and account deletion.
 - **Profile** — functional account page: edit full name, change password, upload profile photo (stored in DB).
 - **Dashboard** — dynamic stat cards (live percentages), study-hours chart (day/week/month range), subject distribution chart, quick-add forms, recent lists.
 - **Auth** — register / login / logout, password hashing, session-based.
@@ -37,7 +38,7 @@ daily_planner/
 ├── includes/
 │   ├── auth.php            # session_start, redirect(), is_logged_in(), require_login()
 │   ├── i18n.php            # language switching (en/kh) + t('key') helper
-│   ├── navbar.php          # global navbar: avatar upload (stored in DB), language pill, logout, active-page highlight
+│   ├── navbar.php          # global navbar: avatar upload (stored in DB), language pill, Settings link, logout confirm, active-page highlight
 │   ├── header.php          # EMPTY (unused)
 │   └── footer.php          # EMPTY (unused)
 ├── index.php               # Login page (real auth lives here)
@@ -48,10 +49,10 @@ daily_planner/
 ├── planner.php             # Daily planner: add multi-subject tasks, toggle done, copy prev day, report/PDF
 ├── subjects.php            # Subject CRUD (add, list, delete)
 ├── goals.php               # Goal tracker: add, log hours, delete, progress bars, OVERDUE highlighting
-├── expenses.php            # Expense/income dual-currency tracking + budget + report/PDF
-├── notes.php               # Notes: add/edit/delete simple + password-protected (secure) notes
+├── expenses.php            # Expense/income dual-currency tracking + budget + report/PDF (4 stat cards with top accent bars)
+├── notes.php               # Notes: add/edit/delete simple + password-protected (secure) notes; optional image stored in DB
 ├── profile.php             # Account page: edit name, change password, upload photo (stored in DB)
-├── setting.php             # Settings UI — MOSTLY STATIC/MOCK (see gotchas)
+├── setting.php             # Settings: preferences (deep work/reminders/focus duration) + account overview + delete account
 ├── users.php               # EMPTY (unused)
 ├── uploads/avatars/        # Legacy avatar files (kept for backward compat only)
 ├── assets/                 # Static assets directory
@@ -85,9 +86,11 @@ daily_planner/
 
 **expenses** — `id`, `user_id` (FK), `title`, `category`, `amount` (DECIMAL, stored in USD), `type` (ENUM 'expense'|'income'), `expense_date`, `note`, `created_at`.
 
-**notes** — `id`, `user_id` (FK), `title`, `content` (TEXT), `type` (ENUM 'simple'|'secure'), `created_at`, `updated_at` (auto-updates on edit).
+**notes** — `id`, `user_id` (FK), `title`, `content` (TEXT), `type` (ENUM 'simple'|'secure'), `image_data` (MEDIUMTEXT — optional base64 `data:` URI, NULL when no image), `created_at`, `updated_at` (auto-updates on edit).
 
-All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywhere.
+**settings** — `id`, `user_id` (FK→users, CASCADE), `deep_work` (TINYINT 0/1), `daily_reminders` (TINYINT 0/1), `focus_duration` (INT, one of 25/45/60/90), `updated_at`. A default row is inserted for each user on first visit to `setting.php`.
+
+All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywhere (including `settings` and note images).
 
 ## 6. Key business logic / formulas
 
@@ -98,6 +101,8 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - **Planner done state:** a task counts as done when `progress >= 100` OR `status === 'Completed'` (both `planner.php` and `dashboard.php`). Completion time = `end_time - start_time` (only counted when end > start).
 - **Profile image:** stored IN THE DATABASE as a base64 `data:` URI in `users.avatar_data` (upload handler in `includes/navbar.php` and `profile.php`). `index.php` loads it into `$_SESSION['user_avatar']` on login. `avatar` (legacy file path) is kept only for backward compatibility. Max upload 2 MB.
 - **Secure notes:** `notes.php` unlocks a `secure` note only after `password_verify` succeeds against the user's account password; unlocked note IDs are tracked in `$_SESSION['unlocked_notes']`. Content is never rendered until unlocked.
+- **Note images:** `upload_note_image()` in `notes.php` validates type (jpg/jpeg/png/webp/gif) and size (≤ 2 MB), returns `null` (no file), `false` (invalid), or a base64 `data:` URI stored in `notes.image_data`. On edit the user may replace or remove the image ("Remove image" checkbox). Form must be `enctype="multipart/form-data"`; field name is `note_image`.
+- **Settings:** `setting.php` loads (or creates) the row from `settings` for the logged-in user, saves `deep_work`/`daily_reminders` checkboxes + `focus_duration` (whitelist 25/45/60/90) via `UPDATE ... SET updated_at = NOW()`, and offers account deletion (`DELETE FROM users` cascades everything, then session is destroyed).
 - **Dashboard dynamic stat cards:**
   - Subjects = % of subjects that have planner sessions; subtext "N used in planner".
   - Planner = % of planner tasks completed.
@@ -125,14 +130,15 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 ## 8. Authentication & security notes
 
 - Passwords: `password_hash($pwd, PASSWORD_DEFAULT)` on register, `password_verify` on login (`index.php`). Secure-note unlock also uses `password_verify` against the account password.
-- Sessions store `user_id`, `user_name`, optionally `user_avatar` (data URI or legacy path), `lang`, and `unlocked_notes` (IDs of unlocked secure notes).
+- Sessions store `user_id`, `user_name`, optionally `user_avatar` (data URI or legacy path), `lang`, `unlocked_notes` (IDs of unlocked secure notes), and `csrf_token`.
+- **CSRF:** `notes.php` and `setting.php` use per-session CSRF tokens (`$_SESSION['csrf_token']` + a hidden `csrf_token` field; handlers check `csrf_valid()`). **Any new POST form on those pages MUST include the hidden `csrf_token` input or the handler will reject it.** Other pages do not have CSRF yet.
 - All multi-user queries filter by `user_id = ?` — keep it that way (it's the only ownership check; there is **no role system**).
-- Known gaps (do not introduce new ones): **no CSRF tokens**, no `htmlspecialchars` on a few echoes, avatar upload whitelists extensions (`jpg jpeg png webp gif`) and limits size to 2 MB but does not re-check MIME/content.
+- Known gaps (do not introduce new ones): most pages still have **no CSRF tokens**, no `htmlspecialchars` on a few echoes, avatar/image uploads whitelist extensions (`jpg jpeg png webp gif`) and limit size to 2 MB but do not re-check MIME/content.
 - Credentials in `config/db.php` are local-dev defaults (`root` / empty). Don't commit real credentials.
 
 ## 9. Known issues / gotchas (important!)
 
-- **`setting.php` is mostly a mock UI.** It uses hardcoded fallback data ("Alex Student", an Unsplash avatar, `$userEmail`), and **does not process its form** (no POST handler, no password change, no avatar save). Its sidebar links to `settings.php` (plural) but the file is `setting.php` (singular) — that link is broken. Use **`profile.php`** for real account management.
+- **`setting.php` is now functional** (was a mock): it persists preferences to the `settings` table, links to `profile.php` for account editing, and supports account deletion. Its own POST forms require the hidden `csrf_token`. The old broken sidebar links to `settings.php` (plural) are gone.
 - **`users.php`, `includes/header.php`, `includes/footer.php` are empty** placeholder files. `header.php`/`footer.php` are not used anywhere.
 - **`includes.zip`** is a stale archive of `includes/` — ignore it; don't treat it as source of truth.
 - Dashboard stat cards previously had **hardcoded decorative progress rings**; they are now computed from real data in `dashboard.php`.
@@ -140,6 +146,8 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - When a subject is deleted, its planner rows are cascade-deleted (FK). Dashboard's `delete_subject` binds only `id` (subjects are unique per user by FK), others bind `id + user_id`.
 - `planner.php` copies prior-day templates client-visible via `?copy_from=YYYY-MM-DD`; the copy only pre-fills the form, it does not duplicate rows until saved.
 - Profile images uploaded before this change used a file path in `users.avatar` + `uploads/avatars/`. New uploads store a base64 data URI in `users.avatar_data` and null out `avatar` — keep the fallback chain (`avatar_data` then `avatar`) when displaying.
+- The navbar logout link uses `onclick="return confirm(...)"` — the confirm text is hardcoded English (not in i18n). If you translate it, add keys to `includes/i18n.php`.
+- Expenses' four stat cards use the shared `.exp-stat` / `.exp-accent` / `.exp-label` / `.exp-value` / `.exp-sub` CSS classes defined in `expenses.php`'s `<style>` block. Keep them consistent if you restyle.
 
 ## 10. Running / testing locally
 
@@ -154,5 +162,6 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 2. Keep auth guard lines at the top of any new protected page.
 3. Filter every query by the logged-in `$userId`.
 4. Use prepared statements + `htmlspecialchars` in new code.
-5. Update both `en` and `kh` translation arrays when adding user-visible strings.
-6. Test manually via browser since no automated tests exist.
+5. If adding POST handlers to `notes.php`/`setting.php`, include the hidden `csrf_token` field and check `csrf_valid()` — those pages require it.
+6. Update both `en` and `kh` translation arrays when adding user-visible strings.
+7. Test manually via browser since no automated tests exist.

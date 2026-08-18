@@ -183,6 +183,25 @@ $incomeKhr = $incomeUsd * $khrRate;
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
         .type-badge-expense { background:#fee2e2; color:#dc2626; }
         .type-badge-income { background:#d1fae5; color:#059669; }
+        .exp-stat {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            box-shadow: 0 4px 14px rgba(15,23,42,.05);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+        .exp-stat .exp-accent { height: 5px; }
+        .exp-stat .exp-body { padding: 1rem 1.25rem; display: flex; flex-direction: column; flex-grow: 1; }
+        .accent-today { background: #f97316; }
+        .accent-month { background: #ef4444; }
+        .accent-alltime { background: #8b5cf6; }
+        .accent-budget { background: #10b981; }
+        .exp-label { font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
+        .exp-value { font-size: 1.65rem; font-weight: 800; line-height: 1.1; }
+        .exp-sub { font-size: .74rem; color: #94a3b8; margin-top: auto; padding-top: .8rem; }
     </style>
 </head>
 <body class="text-gray-800 antialiased min-h-screen">
@@ -211,60 +230,62 @@ $incomeKhr = $incomeUsd * $khrRate;
 
    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
     <!-- Today Card -->
-    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
-        <div>
-            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent Today</p>
+    <div class="exp-stat">
+        <div class="exp-accent accent-today"></div>
+        <div class="exp-body">
+            <p class="exp-label">Total Spent Today</p>
             <div class="mt-2 space-y-0.5">
-                <div class="text-3xl font-extrabold text-orange-500">
+                <div class="exp-value text-orange-500">
                     - $<?php echo number_format($dateExpenseTotal, 2); ?>
                 </div>
                 <div class="text-sm font-semibold text-emerald-600">
                     + $<?php echo number_format($dateIncomeTotal, 2); ?> income
                 </div>
             </div>
+            <p class="exp-sub"><?php echo count($dateItems); ?> item(s) logged on this date</p>
         </div>
-        <p class="text-xs text-gray-500 mt-4"><?php echo count($dateItems); ?> item(s) logged on this date</p>
     </div>
 
     <!-- This Month Card -->
-    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
-        <div>
-            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent (This Month)</p>
+    <div class="exp-stat">
+        <div class="exp-accent accent-month"></div>
+        <div class="exp-body">
+            <p class="exp-label">Total Spent (This Month)</p>
             <div class="mt-2 space-y-0.5">
-                <div class="text-3xl font-extrabold text-red-500">
+                <div class="exp-value text-red-500">
                     - $<?php echo number_format($monthlyExpenseTotal, 2); ?>
                 </div>
                 <div class="text-sm font-semibold text-emerald-600">
                     + $<?php echo number_format($monthlyIncomeTotal, 2); ?> income
                 </div>
             </div>
+            <p class="exp-sub"><?php echo htmlspecialchars(date('F Y', strtotime($selectedDate))); ?> totals</p>
         </div>
-        <p class="text-xs text-gray-500 mt-4"><?php echo htmlspecialchars(date('F Y', strtotime($selectedDate))); ?> totals</p>
     </div>
 
     <!-- All-Time Card -->
-    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
-        <div>
-            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Spent (All-Time)</p>
+    <div class="exp-stat">
+        <div class="exp-accent accent-alltime"></div>
+        <div class="exp-body">
+            <p class="exp-label">Total Spent (All-Time)</p>
             <div class="mt-2 space-y-0.5">
-                <div class="text-3xl font-extrabold text-red-500">
+                <div class="exp-value text-red-500">
                     - $<?php echo number_format($allExpenseTotal, 2); ?>
                 </div>
                 <div class="text-sm font-semibold text-emerald-600">
                     + $<?php echo number_format($allIncomeTotal, 2); ?> income (all-time)
                 </div>
             </div>
+            <p class="exp-sub">Accumulated total spending &amp; income</p>
         </div>
-        <p class="text-xs text-gray-500 mt-4">Accumulated total spending &amp; income</p>
     </div>
 
-    
-
     <!-- Remaining Budget Card -->
-    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
-        <div>
-            <div class="flex justify-between items-center">
-                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Remaining Budget</p>
+    <div class="exp-stat">
+        <div class="exp-accent accent-budget"></div>
+        <div class="exp-body">
+            <div class="flex justify-between items-center gap-2">
+                <p class="exp-label">Remaining Budget</p>
                 <button onclick="openReportModal()" class="bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 font-semibold px-3 py-1 rounded-lg text-xs flex items-center space-x-1.5 transition">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -272,11 +293,11 @@ $incomeKhr = $incomeUsd * $khrRate;
                     <span>Report</span>
                 </button>
             </div>
-            <div class="text-3xl font-extrabold text-emerald-600 mt-2">
+            <div class="exp-value text-emerald-600 mt-2">
                 $<?php echo number_format($remaining, 2); ?>
             </div>
+            <p class="exp-sub">Budget $<?php echo number_format($monthlyBudget, 2); ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?> / Month</p>
         </div>
-        <p class="text-xs text-gray-500 mt-4">Budget $<?php echo number_format($monthlyBudget, 2); ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?> / Month</p>
     </div>
 </div>
   

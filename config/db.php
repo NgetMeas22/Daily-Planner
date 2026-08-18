@@ -57,6 +57,24 @@ $conn->query("
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
 
+// Store an optional note image (base64 data URI) inside the database.
+$hasNoteImage = $conn->query("SHOW COLUMNS FROM notes LIKE 'image_data'");
+if ($hasNoteImage && $hasNoteImage->num_rows === 0) {
+    $conn->query("ALTER TABLE notes ADD COLUMN image_data MEDIUMTEXT NULL AFTER content");
+}
+
+$conn->query("
+    CREATE TABLE IF NOT EXISTS settings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        deep_work TINYINT(1) NOT NULL DEFAULT 0,
+        daily_reminders TINYINT(1) NOT NULL DEFAULT 1,
+        focus_duration INT NOT NULL DEFAULT 45,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+");
+
 $conn->query("
     CREATE TABLE IF NOT EXISTS subjects (
         id INT AUTO_INCREMENT PRIMARY KEY,
