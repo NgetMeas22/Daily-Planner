@@ -49,7 +49,7 @@ $conn->query("
     CREATE TABLE IF NOT EXISTS notes (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
-        title VARCHAR(200) NOT NULL,
+        title TEXT NOT NULL,
         content TEXT NOT NULL,
         type ENUM('simple','secure') NOT NULL DEFAULT 'simple',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -59,6 +59,15 @@ $conn->query("
 ");
 
 // Store an optional note image (base64 data URI) inside the database.
+$hasNoteTitle = $conn->query("SHOW COLUMNS FROM notes LIKE 'title'");
+if ($hasNoteTitle && $hasNoteTitle->num_rows > 0) {
+    $titleColumn = $hasNoteTitle->fetch_assoc();
+    $titleType = strtolower($titleColumn['Type'] ?? '');
+    if (strpos($titleType, 'text') === false) {
+        $conn->query("ALTER TABLE notes MODIFY COLUMN title TEXT NOT NULL");
+    }
+}
+
 $hasNoteImage = $conn->query("SHOW COLUMNS FROM notes LIKE 'image_data'");
 if ($hasNoteImage && $hasNoteImage->num_rows === 0) {
     $conn->query("ALTER TABLE notes ADD COLUMN image_data MEDIUMTEXT NULL AFTER content");
