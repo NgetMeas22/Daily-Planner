@@ -15,6 +15,12 @@
     $copyFromDate = $_GET['copy_from'] ?? '';
     $copyFromDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $copyFromDate) ? $copyFromDate : '';
 
+    // Day navigation helpers
+    $selectedTs = strtotime($selectedDate);
+    $prevDate = date('Y-m-d', strtotime('-1 day', $selectedTs));
+    $nextDate = date('Y-m-d', strtotime('+1 day', $selectedTs));
+    $todayDate = date('Y-m-d');
+
     // --- POST REQUEST HANDLERS ---
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
@@ -137,15 +143,16 @@
     $hoursNotDone = floor($secondsNotDone / 3600);
     $minutesNotDone = floor(($secondsNotDone % 3600) / 60);
 
-    // Fetch History Data
+    // Fetch History Data (limited to a rolling 30-day window so the page stays fast)
+    $historyStart = date('Y-m-d', strtotime('-29 days', $selectedTs));
     $historyStmt = $conn->prepare("
         SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, s.name AS subject_name
         FROM planner p
         INNER JOIN subjects s ON s.id = p.subject_id
-        WHERE p.user_id = ? AND p.study_date <= ?
+        WHERE p.user_id = ? AND p.study_date <= ? AND p.study_date >= ?
         ORDER BY p.study_date DESC, p.start_time ASC
     ");
-    $historyStmt->bind_param('is', $userId, $selectedDate);
+    $historyStmt->bind_param('iss', $userId, $selectedDate, $historyStart);
     $historyStmt->execute();
     $allHistoryRows = $historyStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -183,14 +190,18 @@
         $copyTemplateMap[(int) $templateRow['subject_id']] = $templateRow;
     }
 
-    // Overall completion totals across ALL history (used in the "Download All" grand summary)
-    $allHistoryTotal = count($allHistoryRows);
-    $allHistoryDone = 0;
-    foreach ($allHistoryRows as $hRow) {
-        if ((int)$hRow['progress'] >= 100 || $hRow['status'] === 'Completed') {
-            $allHistoryDone++;
-        }
-    }
+    // Overall completion totals across ALL history (cheap aggregate used in the "Download All" grand summary)
+    $aggStmt = $conn->prepare("
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN progress >= 100 OR status = 'Completed' THEN 1 ELSE 0 END), 0) AS done
+        FROM planner WHERE user_id = ? AND study_date <= ?
+    ");
+    $aggStmt->bind_param('is', $userId, $selectedDate);
+    $aggStmt->execute();
+    $aggRow = $aggStmt->get_result()->fetch_assoc();
+    $aggStmt->close();
+    $allHistoryTotal = (int) ($aggRow['total'] ?? 0);
+    $allHistoryDone = (int) ($aggRow['done'] ?? 0);
     ?>
     <!DOCTYPE html>
     <html lang="<?php echo htmlspecialchars($currentLang); ?>">
@@ -219,9 +230,20 @@
                     <h1 class="text-2xl font-bold text-gray-900">Daily Planner</h1>
                     <p class="text-sm text-gray-500 mt-1">Organize and manage your daily activities easily.</p>
                 </div>
-                <form method="get" class="flex items-center gap-2 w-full sm:w-auto">
-                    <input type="date" class="border border-gray-300 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none w-full sm:w-auto" name="date" value="<?php echo htmlspecialchars($selectedDate); ?>">
+                <form method="get" class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div class="flex items-center gap-1">
+                        <a href="planner.php?date=<?php echo urlencode($prevDate); ?>" title="Previous day" class="w-9 h-9 inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        </a>
+                        <input type="date" class="border border-gray-300 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" name="date" value="<?php echo htmlspecialchars($selectedDate); ?>">
+                        <a href="planner.php?date=<?php echo urlencode($nextDate); ?>" title="Next day" class="w-9 h-9 inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </a>
+                    </div>
                     <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-xl text-sm transition">View</button>
+                    <?php if ($selectedDate !== $todayDate): ?>
+                        <a href="planner.php" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-xl text-sm transition">Today</a>
+                    <?php endif; ?>
                 </form>
             </div>
 

@@ -30,6 +30,7 @@ function format_note_date(?string $datetime): string {
     return date('M j, Y \a\t g:i A', $ts);
 }
 
+
 // Process the optional note image upload.
 // Returns: string data-URI on success, null when no file sent, false when the file is invalid.
 function upload_note_image()
@@ -507,6 +508,8 @@ if ($secureUnlockedAt !== null && !$secureUnlocked) {
             <div class="col-12 text-center text-muted py-4">No secure notes yet.</div>
         <?php endif; ?>
     </div>
+
+
 </div>
 
 <!-- Full-image viewer (lightbox) -->

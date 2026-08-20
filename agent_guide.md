@@ -82,7 +82,7 @@ daily_planner/
 
 **planner** — `id`, `user_id` (FK), `subject_id` (FK→subjects, CASCADE), `study_date` (DATE), `day_name` (ENUM Mon–Sun), `start_time`, `end_time`, `description`, `topic`, `goal`, `result`, `progress` (INT, 0–100), `status` (ENUM 'Pending'|'In Progress'|'Completed'), `created_at`.
 
-**goals** — `id`, `user_id` (FK), `goal_name`, `category` (default 'General'), `priority` (default 'Medium'), `target_hours`, `completed_hours`, `progress`, `deadline`, `status` (ENUM 'In Progress'|'Completed'), `created_at`.
+**goals** — `id`, `user_id` (FK), `goal_name`, `category` (default 'General'), `priority` (default 'Medium'), `target_hours`, `completed_hours`, `progress`, `deadline`, `status` (ENUM 'In Progress'|'Completed'), `notes` (TEXT NULL — optional free-text notes/words for the goal), `created_at`.
 
 **expenses** — `id`, `user_id` (FK), `title`, `category`, `amount` (DECIMAL, stored in USD), `type` (ENUM 'expense'|'income'), `expense_date`, `note`, `created_at`.
 
@@ -95,6 +95,7 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 ## 6. Key business logic / formulas
 
 - **Goal progress:** `progress = min(100, round((completed_hours / target_hours) * 100))`; `status = 'Completed'` when ≥ 100. "Log hours" adds to `completed_hours` and recomputes. See `goals.php`.
+- **Locked goals:** a goal is **locked** when `status === 'Completed'` OR `deadline < today` (`goal_is_locked()` in `goals.php`). Locked goals **cannot be edited or have hours logged** — those controls are hidden/disabled and the POST handlers reject them. They can still be deleted and viewed. Colors: Completed = blue accents/progress bar, Overdue = red, active = amber/info based on progress (the accent bar is only 3px and borders are subtle/light so they don't look thick). **Notes/words live only on the detail page** (`goals.php?view=ID`): they are nullable, are NOT on the add/edit form or the cards, and are saved via the `save_goal_notes` POST handler — notes are editable even on locked goals (they don't affect hours/progress). Goal fields themselves are edited via `goals.php?edit=ID` (unlocked only).
 - **Overdue goal:** a goal is overdue when `status !== 'Completed'` AND `deadline < today` (`goals.php`). Rendered with a red card border, "Overdue" badge, red progress bar, and an "X days overdue" counter. A summary strip shows Total / In Progress / Completed / Overdue counts.
 - **Currency:** amounts are stored in **USD**. KHR is converted at `1 USD = 4050 KHR` (`$khrRate` in `expenses.php`). If USD input is empty, KHR is converted to USD on save.
 - **Remaining budget:** `max(0, monthly_budget - monthly_expenses + monthly_income)` for the month of the selected date (`expenses.php`).
@@ -139,6 +140,9 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - Credentials in `config/db.php` are local-dev defaults (`root` / empty). Don't commit real credentials.
 
 ## 9. Known issues / gotchas (important!)
+
+- **Schema-version gate in `config/db.php`:** all `CREATE TABLE` / `ALTER TABLE` checks are wrapped in a version gate. They run only once per `SCHEMA_VERSION` and the result is cached in the `meta` table, so later page loads skip ~20 `SHOW COLUMNS` checks (this was the main source of slow page loads). **Always bump `SCHEMA_VERSION` when you add a new migration** or existing installs won't upgrade.
+- **Planner history is windowed:** `planner.php` now fetches only the last 30 days of history for the report modal + "copy previous day" list; all-time totals come from a cheap `COUNT`/`SUM` aggregate query instead of loading every row. `goals.php` uses prepared statements for all reads/writes (was interpolating `$userId`).
 
 - **`setting.php` is now functional** (was a mock): it persists preferences to the `settings` table, links to `profile.php` for account editing, and supports account deletion. Its own POST forms require the hidden `csrf_token`. The old broken sidebar links to `settings.php` (plural) are gone.
 - **`users.php`, `includes/header.php`, `includes/footer.php` are empty** placeholder files. `header.php`/`footer.php` are not used anywhere.
