@@ -238,6 +238,27 @@ foreach ($goals as $goal) {
         .text-overdue { color: #dc2626; }
         .text-completed { color: #2563eb; }
         .locked-flag { cursor: not-allowed; opacity: .55; pointer-events: none; }
+
+        /* Notes: reading card + edit mode */
+        .notes-card {
+            background: #f8f9fb;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 18px 20px;
+        }
+        .notes-reading-text {
+            font-size: 0.97rem;
+            line-height: 1.4;
+            color: #334155;
+            white-space: pre-wrap;
+        }
+        .notes-reading-text br {
+            line-height: 1.2;
+        }
+        .notes-empty {
+            color: #94a3b8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -257,6 +278,7 @@ foreach ($goals as $goal) {
                 ? ''
                 : ($diff < 0 ? (abs($diff) . ' day' . (abs($diff) === 1 ? '' : 's') . ' overdue') : ($diff . ' day' . ($diff === 1 ? '' : 's') . ' left'));
         }
+        $hasNotes = trim((string) ($viewGoal['notes'] ?? '')) !== '';
     ?>
     <a href="goals.php" class="btn btn-sm btn-outline-secondary rounded-3 mb-3">
         <i class="bi bi-arrow-left me-1"></i>Back to Goals
@@ -316,13 +338,43 @@ foreach ($goals as $goal) {
                         <div class="progress-bar <?= $vStatus === 'completed' ? 'goal-bar-completed' : ($vStatus === 'overdue' ? 'goal-bar-overdue' : ($vp > 50 ? 'bg-info' : 'bg-warning')) ?>" style="width: <?= $vp ?>%;"></div>
                     </div>
 
-                    <h6 class="fw-bold mb-2"><i class="bi bi-journal-text me-1"></i>Notes / Words</h6>
-                    <form method="post" class="mb-3">
-                        <input type="hidden" name="save_goal_notes" value="1">
-                        <input type="hidden" name="goal_id" value="<?= (int) $viewGoal['id'] ?>">
-                        <textarea class="form-control rounded-3 mb-2" name="goal_notes" rows="4" placeholder="Write your notes, reminders or words here..."><?= htmlspecialchars($viewGoal['notes'] ?? '') ?></textarea>
-                        <button class="btn btn-sm btn-primary rounded-3"><i class="bi bi-save me-1"></i>Save Notes</button>
-                    </form>
+                    <!-- Notes: Read mode -->
+                    <div class="notes-card mb-3" id="notesViewWrap" style="<?= $hasNotes ? '' : 'display:none;' ?>">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0"><i class="bi bi-journal-text me-1"></i>Notes / Words</h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary rounded-3" onclick="toggleNotesEdit(true)">
+                                <i class="bi bi-pencil me-1"></i>Edit
+                            </button>
+                        </div>
+                        <?php
+                            $notesDisplay = trim((string) ($viewGoal['notes'] ?? ''));
+                            $notesDisplay = str_replace(["\r\n", "\r"], "\n", $notesDisplay);
+                            $notesDisplay = preg_replace('/\n[ \t]*\n+/', "\n", $notesDisplay);
+                        ?>
+                        <div class="notes-reading-text"><?= $hasNotes ? nl2br(htmlspecialchars($notesDisplay)) : '' ?></div>
+                    </div>
+
+                    <!-- Notes: Edit mode -->
+                    <div id="notesEditWrap" style="<?= $hasNotes ? 'display:none;' : '' ?>">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0"><i class="bi bi-journal-text me-1"></i>Notes / Words</h6>
+                            <?php if ($hasNotes): ?>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-3" onclick="toggleNotesEdit(false)">Cancel</button>
+                            <?php endif; ?>
+                        </div>
+                        <form method="post" class="mb-3">
+                            <input type="hidden" name="save_goal_notes" value="1">
+                            <input type="hidden" name="goal_id" value="<?= (int) $viewGoal['id'] ?>">
+                            <textarea class="form-control rounded-3 mb-2" name="goal_notes" rows="10" style="min-height:240px;"
+                                placeholder="Write your notes, reminders or words here..."><?= htmlspecialchars($viewGoal['notes'] ?? '') ?></textarea>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary rounded-3"><i class="bi bi-save me-1"></i>Save Notes</button>
+                                <?php if ($hasNotes): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-3" onclick="toggleNotesEdit(false)">Cancel</button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
 
                     <div class="d-flex flex-wrap gap-2 pt-3 border-top">
                         <?php if (!$vLocked): ?>
@@ -338,6 +390,13 @@ foreach ($goals as $goal) {
             </div>
         </div>
     </div>
+
+    <script>
+    function toggleNotesEdit(showEdit) {
+        document.getElementById('notesViewWrap').style.display = showEdit ? 'none' : 'block';
+        document.getElementById('notesEditWrap').style.display = showEdit ? 'block' : 'none';
+    }
+    </script>
 
 <?php else: ?>
 

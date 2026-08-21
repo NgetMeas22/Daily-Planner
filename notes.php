@@ -8,273 +8,200 @@ $userName = $_SESSION['user_name'] ?? 'User';
 $errors = [];
 $success = '';
 
-// How long an unlock lasts, in seconds.
-const SECURE_UNLOCK_SECONDS = 180; // 3 minutes
-const NOTE_ENCRYPTION_CIPHER = 'aes-256-cbc';
-const NOTE_ENCRYPTION_SECRET = 'daily_planner_notes_v1';
+$today = date('Y-m-d');
 
-// --- CSRF TOKEN ---
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrfToken = $_SESSION['csrf_token'];
-
-function csrf_valid(): bool {
-    return isset($_POST['csrf_token']) && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
-}
-
-function format_note_date(?string $datetime): string {
-    if (!$datetime) return '';
-    $ts = strtotime($datetime);
-    if ($ts === false) return '';
-    return date('M j, Y \a\t g:i A', $ts);
-}
-
-
-// Process the optional note image upload.
-// Returns: string data-URI on success, null when no file sent, false when the file is invalid.
-function upload_note_image()
+// A goal is "locked" once it's Completed OR its deadline has passed.
+// Locked goals can no longer be edited or have hours logged to them.
+function goal_is_locked(array $goal, string $today): bool
 {
-    if (!isset($_FILES['note_image']) || $_FILES['note_image']['error'] !== UPLOAD_ERR_OK) {
-        return null;
-    }
-    $file = $_FILES['note_image'];
-    if ($file['size'] <= 0 || $file['size'] > 2 * 1024 * 1024) {
-        return false;
-    }
-    $allowed = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'];
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!isset($allowed[$ext])) {
-        return false;
-    }
-    return 'data:' . $allowed[$ext] . ';base64,' . base64_encode(file_get_contents($file['tmp_name']));
+    return $goal['status'] === 'Completed'
+        || (!empty($goal['deadline']) && $goal['deadline'] < $today);
 }
 
-function note_encryption_key(): string
+function goal_status_class(array $goal, string $today): string
 {
-    return hash('sha256', NOTE_ENCRYPTION_SECRET, true);
+    if ($goal['status'] === 'Completed') {
+        return 'completed';
+    }
+    if (!empty($goal['deadline']) && $goal['deadline'] < $today) {
+        return 'overdue';
+    }
+    return 'active';
 }
 
-function encrypt_note_value(string $value): string
-{
-    $ivLength = openssl_cipher_iv_length(NOTE_ENCRYPTION_CIPHER);
-    if ($ivLength === false || $ivLength <= 0) {
-        return $value;
-    }
+// Handle Adding New Goal
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_goal'])) {
+    $goalName = trim($_POST['goal_name'] ?? '');
+    $category = trim($_POST['category'] ?? '') ?: 'General';
+    $priority = trim($_POST['priority'] ?? '') ?: 'Medium';
+    $targetHours = (int) ($_POST['target_hours'] ?? 0);
+    $completedHours = (int) ($_POST['completed_hours'] ?? 0);
+    $deadline = $_POST['deadline'] ?? '';
+    $deadline = preg_match('/^\d{4}-\d{2}-\d{2}$/', $deadline) ? $deadline : null;
 
-    $iv = random_bytes($ivLength);
-    $ciphertext = openssl_encrypt($value, NOTE_ENCRYPTION_CIPHER, note_encryption_key(), OPENSSL_RAW_DATA, $iv);
-    if ($ciphertext === false) {
-        return $value;
-    }
+    if ($targetHours < 0) $targetHours = 0;
+    if ($completedHours < 0) $completedHours = 0;
 
-    return 'enc:' . base64_encode($iv . $ciphertext);
-}
+    $progress = $targetHours > 0 ? (int) min(100, round(($completedHours / $targetHours) * 100)) : 0;
+    $status = $progress >= 100 ? 'Completed' : 'In Progress';
 
-function decrypt_note_value(?string $value): string
-{
-    if ($value === null || $value === '') {
-        return '';
-    }
-
-    if (strncmp($value, 'enc:', 4) !== 0) {
-        return $value;
-    }
-
-    $payload = base64_decode(substr($value, 4), true);
-    if ($payload === false) {
-        return '';
-    }
-
-    $ivLength = openssl_cipher_iv_length(NOTE_ENCRYPTION_CIPHER);
-    if ($ivLength === false || $ivLength <= 0 || strlen($payload) <= $ivLength) {
-        return '';
-    }
-
-    $iv = substr($payload, 0, $ivLength);
-    $ciphertext = substr($payload, $ivLength);
-    $plaintext = openssl_decrypt($ciphertext, NOTE_ENCRYPTION_CIPHER, note_encryption_key(), OPENSSL_RAW_DATA, $iv);
-
-    return $plaintext === false ? '' : $plaintext;
-}
-
-function posted_note_text(string $primaryKey, string $fallbackKey = ''): string
-{
-    $value = trim((string) ($_POST[$primaryKey] ?? ''));
-    if ($value === '' && $fallbackKey !== '') {
-        $value = trim((string) ($_POST[$fallbackKey] ?? ''));
-    }
-    return $value;
-}
-
-// --- ADD NOTE ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_note'])) {
-    if (!csrf_valid()) {
-        $errors[] = 'Your session expired. Please try again.';
+    if ($goalName === '' || $targetHours <= 0) {
+        $errors[] = 'Goal name and target hours are required.';
     } else {
-        $title = posted_note_text('note_title', 'title');
-        $content = posted_note_text('note_content', 'content');
-        $type = ($_POST['type'] ?? '') === 'secure' ? 'secure' : 'simple';
-
-        if ($title === '' || $content === '') {
-            $errors[] = 'Title and content are required.';
-        } elseif (mb_strlen($title) > 190) {
-            $errors[] = 'Title must be 190 characters or fewer.';
-        } elseif (mb_strlen($content) > 10000) {
-            $errors[] = 'Content must be 10,000 characters or fewer.';
-        } else {
-            $encryptedTitle = encrypt_note_value($title);
-            $encryptedContent = encrypt_note_value($content);
-            $image = upload_note_image();
-
-            if ($image === false) {
-                $errors[] = 'Invalid image. Only JPG, PNG, WEBP or GIF files up to 2MB are allowed.';
-            } else {
-                $stmt = $conn->prepare('INSERT INTO notes (user_id, title, content, image_data, type) VALUES (?, ?, ?, ?, ?)');
-                $stmt->bind_param('issss', $userId, $encryptedTitle, $encryptedContent, $image, $type);
-                $stmt->execute();
-                redirect('notes.php');
-            }
-        }
-    }
-}
-
-// --- EDIT NOTE ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_note'])) {
-    if (!csrf_valid()) {
-        $errors[] = 'Your session expired. Please try again.';
-    } else {
-        $id = (int) ($_POST['note_id'] ?? 0);
-        $title = posted_note_text('note_title', 'title');
-        $content = posted_note_text('note_content', 'content');
-        $type = ($_POST['type'] ?? '') === 'secure' ? 'secure' : 'simple';
-
-        if ($title === '' || $content === '') {
-            $errors[] = 'Title and content are required.';
-        } elseif (mb_strlen($title) > 190) {
-            $errors[] = 'Title must be 190 characters or fewer.';
-        } elseif (mb_strlen($content) > 10000) {
-            $errors[] = 'Content must be 10,000 characters or fewer.';
-        } else {
-            $encryptedTitle = encrypt_note_value($title);
-            $encryptedContent = encrypt_note_value($content);
-            $newImage = upload_note_image();
-
-            if ($newImage === false) {
-                $errors[] = 'Invalid image. Only JPG, PNG, WEBP or GIF files up to 2MB are allowed.';
-            } elseif (isset($_POST['remove_image'])) {
-                // User chose to remove the existing image.
-                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, image_data = NULL, updated_at = NOW() WHERE id = ? AND user_id = ?');
-                $stmt->bind_param('sssii', $encryptedTitle, $encryptedContent, $type, $id, $userId);
-                $stmt->execute();
-                redirect('notes.php');
-            } elseif ($newImage !== null) {
-                // A new image was uploaded — replace the old one.
-                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, image_data = ?, updated_at = NOW() WHERE id = ? AND user_id = ?');
-                $stmt->bind_param('ssssii', $encryptedTitle, $encryptedContent, $type, $newImage, $id, $userId);
-                $stmt->execute();
-                redirect('notes.php');
-            } else {
-                // No new image — keep the existing one.
-                $stmt = $conn->prepare('UPDATE notes SET title = ?, content = ?, type = ?, updated_at = NOW() WHERE id = ? AND user_id = ?');
-                $stmt->bind_param('sssii', $encryptedTitle, $encryptedContent, $type, $id, $userId);
-                $stmt->execute();
-                redirect('notes.php');
-            }
-        }
-    }
-}
-
-// --- DELETE NOTE ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_note'])) {
-    if (!csrf_valid()) {
-        $errors[] = 'Your session expired. Please try again.';
-    } else {
-        $id = (int) ($_POST['note_id'] ?? 0);
-        $stmt = $conn->prepare('DELETE FROM notes WHERE id = ? AND user_id = ?');
-        $stmt->bind_param('ii', $id, $userId);
+        $stmt = $conn->prepare('INSERT INTO goals (user_id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt->bind_param('isssiiiss', $userId, $goalName, $category, $priority, $targetHours, $completedHours, $progress, $deadline, $status);
         $stmt->execute();
-        redirect('notes.php');
+        $stmt->close();
+        redirect('goals.php');
     }
 }
 
-// --- UNLOCK ALL SECURE NOTES (requires account password, entered once) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_secure'])) {
-    if (!csrf_valid()) {
-        $errors[] = 'Your session expired. Please try again.';
+// Handle Editing an Existing Goal (blocked when the goal is locked)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_goal'])) {
+    $goalId = (int) ($_POST['goal_id'] ?? 0);
+
+    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $goalId, $userId);
+    $stmt->execute();
+    $currentGoal = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$currentGoal) {
+        $errors[] = 'Goal not found.';
+    } elseif (goal_is_locked($currentGoal, $today)) {
+        $errors[] = 'This goal is locked (completed or past deadline) and cannot be edited.';
     } else {
-        $password = $_POST['password'] ?? '';
+        $goalName = trim($_POST['goal_name'] ?? '');
+        $category = trim($_POST['category'] ?? '') ?: 'General';
+        $priority = trim($_POST['priority'] ?? '') ?: 'Medium';
+        $targetHours = (int) ($_POST['target_hours'] ?? 0);
+        $deadline = $_POST['deadline'] ?? '';
+        $deadline = preg_match('/^\d{4}-\d{2}-\d{2}$/', $deadline) ? $deadline : null;
 
-        if ($password === '') {
-            $errors[] = 'Password is required to view secure notes.';
+        if ($targetHours < 0) $targetHours = 0;
+        $completedHours = (int) $currentGoal['completed_hours'];
+        if ($completedHours > $targetHours) $completedHours = $targetHours;
+
+        $progress = $targetHours > 0 ? (int) min(100, round(($completedHours / $targetHours) * 100)) : 0;
+        $status = $progress >= 100 ? 'Completed' : 'In Progress';
+
+        if ($goalName === '' || $targetHours <= 0) {
+            $errors[] = 'Goal name and target hours are required.';
         } else {
-            $pwStmt = $conn->prepare('SELECT password FROM users WHERE id = ?');
-            $pwStmt->bind_param('i', $userId);
-            $pwStmt->execute();
-            $pwRow = $pwStmt->get_result()->fetch_assoc();
-
-            if ($pwRow && password_verify($password, $pwRow['password'])) {
-                // One password entry unlocks every secure note for the whole window below.
-                $_SESSION['secure_notes_unlocked_at'] = time();
-                $success = 'Secure notes unlocked for 3 minutes.';
-                redirect('notes.php');
-            } else {
-                $errors[] = 'Incorrect password.';
-            }
+            $stmt = $conn->prepare('UPDATE goals SET goal_name = ?, category = ?, priority = ?, target_hours = ?, deadline = ?, progress = ?, status = ? WHERE id = ? AND user_id = ?');
+            $stmt->bind_param('sssisssii', $goalName, $category, $priority, $targetHours, $deadline, $progress, $status, $goalId, $userId);
+            $stmt->execute();
+            $stmt->close();
+            redirect('goals.php');
         }
     }
 }
 
-// --- LOCK ALL SECURE NOTES ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lock_secure'])) {
-    if (!csrf_valid()) {
-        $errors[] = 'Your session expired. Please try again.';
-    } else {
-        unset($_SESSION['secure_notes_unlocked_at']);
-        redirect('notes.php');
-    }
-}
-
-// --- EDIT LOAD ---
-$editNote = null;
-if (isset($_GET['edit'])) {
-    $editId = (int) $_GET['edit'];
-    $stmt = $conn->prepare('SELECT id, title, content, image_data, type FROM notes WHERE id = ? AND user_id = ?');
-    $stmt->bind_param('ii', $editId, $userId);
+// Handle Saving Goal Notes (from the detail page — allowed even when locked)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_goal_notes'])) {
+    $goalId = (int) ($_POST['goal_id'] ?? 0);
+    $notes = trim($_POST['goal_notes'] ?? '');
+    $stmt = $conn->prepare('UPDATE goals SET notes = ? WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('sii', $notes, $goalId, $userId);
     $stmt->execute();
-    $editNote = $stmt->get_result()->fetch_assoc();
-    if ($editNote) {
-        $editNote['title'] = decrypt_note_value($editNote['title'] ?? '');
-        $editNote['content'] = decrypt_note_value($editNote['content'] ?? '');
+    $stmt->close();
+    redirect('goals.php?view=' . $goalId);
+}
+
+// Handle Updating Progress (Quick Log Hours) — blocked when the goal is locked
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_progress'])) {
+    $goalId = (int) $_POST['goal_id'];
+    $addHours = (int) $_POST['add_hours'];
+
+    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $goalId, $userId);
+    $stmt->execute();
+    $curr = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($curr && !goal_is_locked($curr, $today) && $addHours > 0) {
+        $newCompleted = (int) $curr['completed_hours'] + $addHours;
+        $newProgress = (int) min(100, round(($newCompleted / (int) $curr['target_hours']) * 100));
+        $newStatus = $newProgress >= 100 ? 'Completed' : 'In Progress';
+
+        $updateStmt = $conn->prepare('UPDATE goals SET completed_hours = ?, progress = ?, status = ? WHERE id = ? AND user_id = ?');
+        $updateStmt->bind_param('iisii', $newCompleted, $newProgress, $newStatus, $goalId, $userId);
+        $updateStmt->execute();
+        $updateStmt->close();
+        redirect('goals.php');
+    } elseif ($curr && goal_is_locked($curr, $today)) {
+        $errors[] = 'This goal is locked and cannot accept more hours.';
     }
 }
 
-// --- FETCH ALL NOTES ---
-$stmt = $conn->prepare('SELECT id, title, content, image_data, type, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC');
-$stmt->bind_param('i', $userId);
-$stmt->execute();
-$notes = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-foreach ($notes as &$note) {
-    $note['title'] = decrypt_note_value($note['title'] ?? '');
-    $note['content'] = decrypt_note_value($note['content'] ?? '');
+// Handle Deletion via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_goal'])) {
+    $id = (int) $_POST['goal_id'];
+    $stmt = $conn->prepare('DELETE FROM goals WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $id, $userId);
+    $stmt->execute();
+    $stmt->close();
+    redirect('goals.php');
 }
-unset($note);
 
-$simpleNotes = array_filter($notes, fn($n) => $n['type'] === 'simple');
-$secureNotes = array_filter($notes, fn($n) => $n['type'] === 'secure');
+// --- DETAIL PAGE (?view=ID) -------------------------------------------------
+$viewGoal = null;
+if (isset($_GET['view'])) {
+    $vid = (int) $_GET['view'];
+    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $vid, $userId);
+    $stmt->execute();
+    $viewGoal = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$viewGoal) {
+        redirect('goals.php');
+    }
+}
 
-// Whether the whole "Secure Notes" section is currently unlocked.
-// The unlock is single-use: it only lasts for this page view and is
-// consumed right after rendering (see the end of the file), so refreshing
-// or navigating away re-locks the notes. SECURE_UNLOCK_SECONDS is a
-// secondary safety net — the JS below also re-locks the view in place.
-$secureUnlockedAt = $_SESSION['secure_notes_unlocked_at'] ?? null;
-$secureUnlocked = $secureUnlockedAt !== null && (time() - $secureUnlockedAt <= SECURE_UNLOCK_SECONDS);
-$secureUnlockRemaining = $secureUnlocked ? SECURE_UNLOCK_SECONDS - (time() - $secureUnlockedAt) : 0;
-if ($secureUnlockedAt !== null && !$secureUnlocked) {
-    // Window expired — clean up so future checks are cheap.
-    unset($_SESSION['secure_notes_unlocked_at']);
+// --- EDIT LOAD (?edit=ID) ----------------------------------------------------
+$editGoal = null;
+if (isset($_GET['edit'])) {
+    $eid = (int) $_GET['edit'];
+    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $eid, $userId);
+    $stmt->execute();
+    $editGoal = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if ($editGoal && goal_is_locked($editGoal, $today)) {
+        $editGoal = null;
+        $errors[] = 'This goal is locked (completed or past deadline) and cannot be edited.';
+    }
+}
+
+// --- FETCH ALL GOALS (overdue first, then in progress, then completed) ------
+$stmt = $conn->prepare("
+    SELECT * FROM goals
+    WHERE user_id = ?
+    ORDER BY
+        CASE
+            WHEN status = 'Completed' THEN 2
+            WHEN deadline IS NOT NULL AND deadline < ? THEN 0
+            ELSE 1
+        END ASC,
+        deadline ASC,
+        id DESC
+");
+$stmt->bind_param('is', $userId, $today);
+$stmt->execute();
+$goals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+// Goal summary stats (total, in progress, completed, overdue)
+$goalStats = ['total' => count($goals), 'in_progress' => 0, 'completed' => 0, 'overdue' => 0];
+foreach ($goals as $goal) {
+    if ($goal['status'] === 'Completed') {
+        $goalStats['completed']++;
+    } else {
+        $goalStats['in_progress']++;
+        if (!empty($goal['deadline']) && $goal['deadline'] < $today) {
+            $goalStats['overdue']++;
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -282,37 +209,201 @@ if ($secureUnlockedAt !== null && !$secureUnlocked) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notes</title>
+    <title>Goals Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
         body { background: #f8fafc; font-family: 'Inter', sans-serif; }
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
-        .note-card { border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,.03); }
-        .note-card.secure { border-left: 5px solid #0d6efd; }
-        .note-card.simple { border-left: 5px solid #10b981; }
-        .note-body { white-space: pre-wrap; word-break: break-word; }
-        .badge-secure { background: #e0edff; color: #0d6efd; }
-        .badge-simple { background: #d1fae5; color: #059669; }
-        .note-date { font-size: .74rem; color: #94a3b8; }
-        .note-card.d-none { display: none !important; }
-        .note-img { cursor: pointer; transition: opacity .15s; }
-        .note-img:hover { opacity: .85; }
-        .secure-unlock-bar { border-radius: 14px; border: 1px solid #e2e8f0; background: #fff; }
+        .soft-card { border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.03); }
+        .stat-mini { border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; padding: 14px 16px; }
+
+        /* Status theming: Completed = blue, Overdue = red, Active = neutral (subtle, thin edges) */
+        .goal-card.completed { border-color: #bfdbfe !important; box-shadow: 0 1px 4px rgba(59,130,246,.08); }
+        .goal-card.overdue  { border-color: #fecaca !important; box-shadow: 0 1px 4px rgba(220,38,38,.07); }
+        .goal-card.completed .goal-accent { background: #3b82f6; }
+        .goal-card.overdue .goal-accent  { background: #dc2626; }
+        .goal-accent { height: 3px; border-radius: 8px 8px 0 0; background: #e2e8f0; }
+
+        .badge-priority-High { background-color: #ef4444; }
+        .badge-priority-Medium { background-color: #f59e0b; }
+        .badge-priority-Low { background-color: #10b981; }
+        .badge-completed { background-color: #3b82f6; }
+        .badge-overdue { background-color: #dc2626; }
+        .badge-locked { background-color: #64748b; }
+
+        .goal-bar-completed { background-color: #3b82f6 !important; }
+        .goal-bar-overdue { background-color: #dc2626 !important; }
+        .text-overdue { color: #dc2626; }
+        .text-completed { color: #2563eb; }
+        .locked-flag { cursor: not-allowed; opacity: .55; pointer-events: none; }
+
+        /* Notes: reading card + edit mode */
+        .notes-card {
+            background: #f8f9fb;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 18px 20px;
+        }
+        .notes-reading-text {
+            font-size: 0.97rem;
+            line-height: 1.4;
+            color: #334155;
+            white-space: pre-wrap;
+        }
+        .notes-reading-text br {
+            line-height: 1.2;
+        }
+        .notes-empty {
+            color: #94a3b8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
-<?php $activePage = 'notes'; include __DIR__ . '/includes/navbar.php'; ?>
+<?php $activePage = 'goals'; include __DIR__ . '/includes/navbar.php'; ?>
 
-<div class="container py-4 py-md-5">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
-        <div>
-            <h2 class="h3 fw-bold mb-1">Notes</h2>
-            <p class="text-muted small mb-0">Logged in as <strong class="text-dark"><?php echo htmlspecialchars($userName); ?></strong></p>
+<div class="container py-5">
+
+<?php if ($viewGoal): ?>
+    <?php
+        $vp = (int) $viewGoal['progress'];
+        $vStatus = goal_status_class($viewGoal, $today);
+        $vLocked = goal_is_locked($viewGoal, $today);
+        $vDaysLeft = '';
+        if (!empty($viewGoal['deadline'])) {
+            $diff = (int) ((strtotime($viewGoal['deadline']) - strtotime($today)) / 86400);
+            $vDaysLeft = $viewGoal['status'] === 'Completed'
+                ? ''
+                : ($diff < 0 ? (abs($diff) . ' day' . (abs($diff) === 1 ? '' : 's') . ' overdue') : ($diff . ' day' . ($diff === 1 ? '' : 's') . ' left'));
+        }
+        $hasNotes = trim((string) ($viewGoal['notes'] ?? '')) !== '';
+    ?>
+    <a href="goals.php" class="btn btn-sm btn-outline-secondary rounded-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i>Back to Goals
+    </a>
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card soft-card goal-card <?= $vStatus ?>">
+                <div class="goal-accent"></div>
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                        <div>
+                            <span class="badge bg-secondary opacity-75"><?= htmlspecialchars($viewGoal['category']) ?></span>
+                            <?php if ($vStatus === 'completed'): ?>
+                                <span class="badge badge-completed">Completed</span>
+                            <?php elseif ($vStatus === 'overdue'): ?>
+                                <span class="badge badge-overdue">Overdue</span>
+                            <?php endif; ?>
+                            <?php if ($vLocked): ?>
+                                <span class="badge badge-locked"><i class="bi bi-lock-fill me-1"></i>Locked</span>
+                            <?php endif; ?>
+                            <span class="badge badge-priority-<?= htmlspecialchars($viewGoal['priority']) ?>"><?= htmlspecialchars($viewGoal['priority']) ?></span>
+                        </div>
+                        <span class="text-muted small">Added <?= htmlspecialchars(date('M j, Y', strtotime($viewGoal['created_at']))) ?></span>
+                    </div>
+
+                    <h3 class="fw-bold mb-2"><?= htmlspecialchars($viewGoal['goal_name']) ?></h3>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small text-uppercase fw-semibold">Target</div>
+                            <div class="fs-5 fw-bold"><?= (int) $viewGoal['target_hours'] ?> hrs</div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small text-uppercase fw-semibold">Done</div>
+                            <div class="fs-5 fw-bold"><?= (int) $viewGoal['completed_hours'] ?> hrs</div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small text-uppercase fw-semibold">Deadline</div>
+                            <div class="fs-6 fw-bold <?= $vStatus === 'overdue' ? 'text-overdue' : '' ?>">
+                                <?= $viewGoal['deadline'] ? htmlspecialchars($viewGoal['deadline']) : '<span class="text-muted">—</span>' ?>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-muted small text-uppercase fw-semibold">Status</div>
+                            <div class="fs-6 fw-bold <?= $vStatus === 'completed' ? 'text-completed' : ($vStatus === 'overdue' ? 'text-overdue' : '') ?>">
+                                <?= $vLocked ? ($vStatus === 'completed' ? 'Done' : 'Locked') : 'Active' ?>
+                                <?php if ($vDaysLeft): ?><span class="small fw-normal text-muted">(<?= htmlspecialchars($vDaysLeft) ?>)</span><?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between small fw-bold mb-1">
+                        <span>Progress</span>
+                        <span><?= $vp ?>%</span>
+                    </div>
+                    <div class="progress mb-4" style="height:10px;">
+                        <div class="progress-bar <?= $vStatus === 'completed' ? 'goal-bar-completed' : ($vStatus === 'overdue' ? 'goal-bar-overdue' : ($vp > 50 ? 'bg-info' : 'bg-warning')) ?>" style="width: <?= $vp ?>%;"></div>
+                    </div>
+
+                    <!-- Notes: Read mode -->
+                    <div class="notes-card mb-3" id="notesViewWrap" style="<?= $hasNotes ? '' : 'display:none;' ?>">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0"><i class="bi bi-journal-text me-1"></i>Notes / Words</h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary rounded-3" onclick="toggleNotesEdit(true)">
+                                <i class="bi bi-pencil me-1"></i>Edit
+                            </button>
+                        </div>
+                        <?php
+                            $notesDisplay = trim((string) ($viewGoal['notes'] ?? ''));
+                            $notesDisplay = str_replace(["\r\n", "\r"], "\n", $notesDisplay);
+                            $notesDisplay = preg_replace('/\n{2,}/', "\n", $notesDisplay);
+                        ?>
+                        <div class="notes-reading-text"><?= $hasNotes ? nl2br(htmlspecialchars($notesDisplay)) : '' ?></div>
+                    </div>
+
+                    <!-- Notes: Edit mode -->
+                    <div id="notesEditWrap" style="<?= $hasNotes ? 'display:none;' : '' ?>">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0"><i class="bi bi-journal-text me-1"></i>Notes / Words</h6>
+                            <?php if ($hasNotes): ?>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-3" onclick="toggleNotesEdit(false)">Cancel</button>
+                            <?php endif; ?>
+                        </div>
+                        <form method="post" class="mb-3">
+                            <input type="hidden" name="save_goal_notes" value="1">
+                            <input type="hidden" name="goal_id" value="<?= (int) $viewGoal['id'] ?>">
+                            <textarea class="form-control rounded-3 mb-2" name="goal_notes" rows="10" style="min-height:240px;"
+                                placeholder="Write your notes, reminders or words here..."><?= htmlspecialchars($viewGoal['notes'] ?? '') ?></textarea>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary rounded-3"><i class="bi bi-save me-1"></i>Save Notes</button>
+                                <?php if ($hasNotes): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-3" onclick="toggleNotesEdit(false)">Cancel</button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 pt-3 border-top">
+                        <?php if (!$vLocked): ?>
+                            <a href="goals.php?edit=<?= (int) $viewGoal['id'] ?>" class="btn btn-sm btn-outline-primary rounded-3"><i class="bi bi-pencil me-1"></i>Edit</a>
+                        <?php endif; ?>
+                        <form method="post" onsubmit="return confirm('Delete this goal?');" class="m-0">
+                            <input type="hidden" name="delete_goal" value="1">
+                            <input type="hidden" name="goal_id" value="<?= (int) $viewGoal['id'] ?>">
+                            <button class="btn btn-sm btn-outline-danger rounded-3"><i class="bi bi-trash me-1"></i>Delete</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div style="min-width: 240px;">
-            <input type="search" id="noteSearch" class="form-control rounded-3" placeholder="Search notes by title...">
+    </div>
+
+    <script>
+    function toggleNotesEdit(showEdit) {
+        document.getElementById('notesViewWrap').style.display = showEdit ? 'none' : 'block';
+        document.getElementById('notesEditWrap').style.display = showEdit ? 'block' : 'none';
+    }
+    </script>
+
+<?php else: ?>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">Goals Tracker</h2>
+            <p class="text-muted mb-0">Logged in as <?= htmlspecialchars($userName) ?></p>
         </div>
     </div>
 
@@ -323,232 +414,190 @@ if ($secureUnlockedAt !== null && !$secureUnlocked) {
         <div class="alert alert-success py-2"><?= htmlspecialchars($success) ?></div>
     <?php endif; ?>
 
-    <!-- Add / Edit Note Form Card -->
-    <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-body p-4">
-            <h6 class="card-subtitle text-uppercase text-muted fw-bold mb-3 small">
-                <?= $editNote ? 'Edit Note' : 'Add New Note' ?>
-            </h6>
-            <form method="post" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                <input type="hidden" name="<?= $editNote ? 'edit_note' : 'add_note' ?>" value="1">
-                <input type="text" name="username_fake" value="" autocomplete="username" tabindex="-1" aria-hidden="true" class="d-none">
-                <input type="password" name="password_fake" value="" autocomplete="new-password" tabindex="-1" aria-hidden="true" class="d-none">
-                <?php if ($editNote): ?>
-                    <input type="hidden" name="note_id" value="<?= (int) $editNote['id'] ?>">
+    <!-- Goal Summary Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Total Goals</div>
+                <div class="fs-3 fw-bold"><?= $goalStats['total'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">In Progress</div>
+                <div class="fs-3 fw-bold text-info"><?= $goalStats['in_progress'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Completed</div>
+                <div class="fs-3 fw-bold text-completed"><?= $goalStats['completed'] ?></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-mini">
+                <div class="text-muted small fw-semibold text-uppercase">Overdue</div>
+                <div class="fs-3 fw-bold text-overdue"><?= $goalStats['overdue'] ?></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Goal Form -->
+    <div class="card soft-card mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3"><?= $editGoal ? '<i class="bi bi-pencil-square me-1"></i>Edit Goal' : '<i class="bi bi-plus-circle me-1"></i>Add New Goal' ?></h5>
+            <form method="post" class="row g-3">
+                <input type="hidden" name="<?= $editGoal ? 'edit_goal' : 'add_goal' ?>" value="1">
+                <?php if ($editGoal): ?>
+                    <input type="hidden" name="goal_id" value="<?= (int) $editGoal['id'] ?>">
                 <?php endif; ?>
-                <div class="row g-3">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label small fw-semibold text-secondary">Title</label>
-                        <input class="form-control rounded-3" name="note_title" placeholder="Note title" maxlength="190" required autocomplete="off" autocapitalize="off" spellcheck="false"
-                               value="<?= $editNote ? htmlspecialchars($editNote['title']) : '' ?>">
-                    </div>
-                    <div class="col-12 col-md-3">
-                        <label class="form-label small fw-semibold text-secondary">Type</label>
-                        <select class="form-select rounded-3" name="type">
-                            <option value="simple" <?= $editNote && $editNote['type'] === 'simple' ? 'selected' : '' ?>>Simple (no password)</option>
-                            <option value="secure" <?= $editNote && $editNote['type'] === 'secure' ? 'selected' : '' ?>>Secure (needs password)</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label small fw-semibold text-secondary">Content</label>
-                        <textarea class="form-control rounded-3" name="note_content" rows="4" maxlength="10000" placeholder="Write your note here..." required autocomplete="off" autocapitalize="off" spellcheck="false"><?= $editNote ? htmlspecialchars($editNote['content']) : '' ?></textarea>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label small fw-semibold text-secondary">Image (optional, stored in DB)</label>
-                        <?php if ($editNote && $editNote['image_data']): ?>
-                            <div class="d-flex align-items-center gap-3 mb-2">
-                                <img src="<?= htmlspecialchars($editNote['image_data']) ?>" alt="Note image" class="rounded-3" style="width:90px;height:90px;object-fit:cover;border:1px solid #e2e8f0;">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="remove_image" value="1" id="removeNoteImage">
-                                    <label class="form-check-label small" for="removeNoteImage">Remove image</label>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                        <input type="file" class="form-control" name="note_image" accept="image/*">
-                    </div>
-                    <div class="col-12 d-flex gap-2">
-                        <button class="btn btn-primary rounded-3 fw-medium px-4"><?= $editNote ? 'Update Note' : 'Save Note' ?></button>
-                        <?php if ($editNote): ?>
-                            <a class="btn btn-outline-secondary rounded-3" href="notes.php">Cancel</a>
-                        <?php endif; ?>
-                    </div>
+
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Goal Title</label>
+                    <input class="form-control" name="goal_name" placeholder="e.g...." required value="<?= $editGoal ? htmlspecialchars($editGoal['goal_name']) : '' ?>">
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Category</label>
+                    <input class="form-control" name="category" placeholder="e.g. Study, Health, Work" value="<?= $editGoal ? htmlspecialchars($editGoal['category']) : '' ?>">
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Priority</label>
+                    <input class="form-control" name="priority" placeholder="e.g. High, Medium, Low" value="<?= $editGoal ? htmlspecialchars($editGoal['priority']) : '' ?>">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Target Hours</label>
+                    <input class="form-control" type="number" name="target_hours" placeholder="e.g. 60" min="1" required value="<?= $editGoal ? (int) $editGoal['target_hours'] : '' ?>">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Deadline</label>
+                    <input class="form-control" type="date" name="deadline" value="<?= $editGoal ? htmlspecialchars($editGoal['deadline'] ?? '') : '' ?>">
+                </div>
+
+                <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-primary px-4"><?= $editGoal ? 'Save Changes' : 'Add Goal' ?></button>
+                    <?php if ($editGoal): ?>
+                        <a class="btn btn-outline-secondary" href="goals.php">Cancel</a>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- SIMPLE NOTES -->
-    <div class="d-flex align-items-center justify-content-between mb-3">
-        <h5 class="fw-bold mb-0"><span class="badge badge-simple rounded-pill me-2">Simple</span> Simple Notes</h5>
-        <span class="badge bg-light text-dark border px-3 py-2 rounded-pill"><?= count($simpleNotes) ?> Total</span>
-    </div>
-    <div class="row g-3 mb-5">
-        <?php foreach ($simpleNotes as $note): ?>
-            <div class="col-12 col-md-6 col-lg-4 note-item" data-title="<?= htmlspecialchars(mb_strtolower($note['title'])) ?>">
-                <div class="card note-card simple h-100">
-                    <div class="card-body d-flex flex-column">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="fw-bold mb-0"><?= htmlspecialchars($note['title']) ?></h6>
-                        </div>
-                        <?php if ($note['image_data']): ?>
-                            <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2 note-img" style="max-height:180px; object-fit:cover; width:100%;" onclick="openImage(this)">
-                        <?php endif; ?>
-                        <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
-                        <p class="note-date mb-2">
-                            <?php if ($note['created_at'] !== $note['updated_at']): ?>
-                                Updated <?= htmlspecialchars(format_note_date($note['updated_at'])) ?>
-                            <?php else: ?>
-                                Created <?= htmlspecialchars(format_note_date($note['created_at'])) ?>
-                            <?php endif; ?>
-                        </p>
-                        <div class="d-flex justify-content-end gap-2 pt-2 border-top">
-                            <a class="btn btn-sm btn-outline-primary" href="notes.php?edit=<?= (int) $note['id'] ?>">Edit</a>
-                            <form method="post" onsubmit="return confirm('Delete this note?');" class="m-0">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                                <input type="hidden" name="delete_note" value="1">
-                                <input type="hidden" name="note_id" value="<?= (int) $note['id'] ?>">
-                                <button class="btn btn-sm btn-outline-danger">Delete</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        <?php endforeach; ?>
-        <?php if (!$simpleNotes): ?>
-            <div class="col-12 text-center text-muted py-4">No simple notes yet.</div>
-        <?php endif; ?>
-    </div>
-
-    <!-- SECURE NOTES -->
-    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-        <h5 class="fw-bold mb-0"><span class="badge badge-secure rounded-pill me-2">Secure</span> Secure Notes <span class="text-muted small fw-normal">(password protected)</span></h5>
-        <span class="badge bg-light text-dark border px-3 py-2 rounded-pill"><?= count($secureNotes) ?> Total</span>
-    </div>
-
-    <!-- Single unlock/lock bar for the whole Secure Notes section -->
-    <div class="secure-unlock-bar p-3 mb-3">
-        <?php if ($secureUnlocked): ?>
-            <form method="post" class="d-flex flex-wrap align-items-center gap-3 m-0">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                <input type="hidden" name="lock_secure" value="1">
-                <span class="small text-success fw-semibold">
-                    <i class="bi bi-unlock-fill me-1"></i>All secure notes unlocked
-                    (<?= (int) ceil($secureUnlockRemaining / 60) ?> min left)
-                </span>
-                <button class="btn btn-sm btn-outline-secondary ms-auto">Lock all</button>
-            </form>
-        <?php else: ?>
-            <form method="post" class="d-flex flex-wrap align-items-end gap-2 m-0">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                <input type="hidden" name="unlock_secure" value="1">
-                <div class="flex-grow-1" style="min-width:220px;">
-                    <label class="form-label small text-muted mb-1">Enter your account password once to view all secure notes for 3 minutes.</label>
-                    <input type="password" class="form-control form-control-sm rounded-3" name="password" placeholder="Account password" required>
-                </div>
-                <button class="btn btn-sm btn-primary rounded-3">Unlock all</button>
-            </form>
-        <?php endif; ?>
-    </div>
-
+    <!-- Goals Display Grid -->
     <div class="row g-3">
-        <?php foreach ($secureNotes as $note): ?>
-            <div class="col-12 col-md-6 col-lg-4 note-item <?= $secureUnlocked ? 'unlocked-card' : '' ?>" data-title="<?= $secureUnlocked ? htmlspecialchars(mb_strtolower($note['title'])) : '' ?>">
-                <div class="card note-card secure h-100">
-                    <div class="card-body d-flex flex-column">
+        <?php foreach ($goals as $goal):
+            $progress = (int) $goal['progress'];
+            $statusClass = goal_status_class($goal, $today);
+            $locked = goal_is_locked($goal, $today);
+            $priority = $goal['priority'] ?? 'Medium';
+            $category = $goal['category'] ?? 'General';
+
+            if ($statusClass === 'completed') {
+                $barColor = 'goal-bar-completed';
+            } elseif ($statusClass === 'overdue') {
+                $barColor = 'goal-bar-overdue';
+            } else {
+                $barColor = $progress >= 100 ? 'bg-success' : ($progress > 50 ? 'bg-info' : 'bg-warning');
+            }
+
+            $daysLeft = '';
+            if (!empty($goal['deadline'])) {
+                $diff = (int) ((strtotime($goal['deadline']) - strtotime($today)) / 86400);
+                $daysLeft = $goal['status'] === 'Completed'
+                    ? ''
+                    : ($statusClass === 'overdue' ? (abs($diff) . ' day' . (abs($diff) === 1 ? '' : 's') . ' overdue') : ($diff . ' day' . ($diff === 1 ? '' : 's') . ' left'));
+            }
+
+            $badgeClass = in_array($priority, ['High', 'Medium', 'Low']) ? "badge-priority-{$priority}" : "bg-primary";
+        ?>
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card soft-card goal-card <?= $statusClass ?> h-100">
+                    <div class="goal-accent"></div>
+                    <div class="card-body vstack">
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="fw-bold mb-0">
-                                <?php if ($secureUnlocked): ?>
-                                    <?= htmlspecialchars($note['title']) ?>
-                                <?php else: ?>
-                                    <span class="text-muted">Locked note</span>
+                            <span class="badge bg-secondary opacity-75"><?= htmlspecialchars($category) ?></span>
+                            <span class="d-flex gap-1 align-items-center flex-wrap justify-content-end">
+                                <?php if ($statusClass === 'completed'): ?>
+                                    <span class="badge badge-completed"><i class="bi bi-check2-circle me-1"></i>Done</span>
+                                <?php elseif ($statusClass === 'overdue'): ?>
+                                    <span class="badge badge-overdue">Overdue</span>
                                 <?php endif; ?>
-                            </h6>
-                            <span class="badge bg-secondary-subtle text-secondary"><?= $secureUnlocked ? 'Unlocked' : 'Locked' ?></span>
+                                <?php if ($locked): ?>
+                                    <span class="badge badge-locked"><i class="bi bi-lock-fill"></i></span>
+                                <?php endif; ?>
+                                <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($priority) ?></span>
+                            </span>
                         </div>
 
-                        <?php if ($secureUnlocked): ?>
-                            <?php if ($note['image_data']): ?>
-                                <img src="<?= htmlspecialchars($note['image_data']) ?>" alt="Note image" class="img-fluid rounded-3 mb-2 note-img" style="max-height:180px; object-fit:cover; width:100%;" onclick="openImage(this)">
+                        <h5 class="fw-bold mb-2"><?= htmlspecialchars($goal['goal_name']) ?></h5>
+
+                        <div class="text-muted small mb-3">
+                            <div>Target: <strong><?= (int) $goal['target_hours'] ?> hrs</strong> | Done: <strong><?= (int) $goal['completed_hours'] ?> hrs</strong></div>
+                            <?php if ($goal['deadline']): ?>
+                                <div class="<?= $statusClass === 'overdue' ? 'text-overdue fw-semibold' : '' ?>">
+                                    Deadline: <?= htmlspecialchars($goal['deadline']) ?>
+                                    <?php if ($daysLeft): ?>
+                                        <span class="fw-semibold">(<?= htmlspecialchars($daysLeft) ?>)</span>
+                                    <?php endif; ?>
+                                </div>
                             <?php endif; ?>
-                            <p class="small text-secondary note-body flex-grow-1"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
-                            <p class="note-date mb-2">
-                                <?php if ($note['created_at'] !== $note['updated_at']): ?>
-                                    Updated <?= htmlspecialchars(format_note_date($note['updated_at'])) ?>
+                        </div>
+
+                        <div class="mt-auto">
+                            <div class="d-flex justify-content-between small fw-bold mb-1">
+                                <span>Progress</span>
+                                <span><?= $progress ?>%</span>
+                            </div>
+                            <div class="progress mb-3" style="height:8px;">
+                                <div class="progress-bar <?= $barColor ?>" style="width: <?= $progress ?>%;"></div>
+                            </div>
+
+                            <!-- Action Tools -->
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="goals.php?view=<?= (int) $goal['id'] ?>" class="btn btn-sm btn-outline-secondary" title="View details & notes">
+                                    <i class="bi bi-eye"></i> Details
+                                </a>
+
+                                <?php if (!$locked): ?>
+                                    <a href="goals.php?edit=<?= (int) $goal['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit goal">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </a>
+                                    <form method="post" class="d-flex gap-1 flex-grow-1">
+                                        <input type="hidden" name="update_progress" value="1">
+                                        <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                        <input type="number" class="form-control form-control-sm" name="add_hours" placeholder="+ Hours" min="1" required style="width: 80px;">
+                                        <button class="btn btn-sm btn-outline-primary flex-grow-1">Log</button>
+                                    </form>
                                 <?php else: ?>
-                                    Created <?= htmlspecialchars(format_note_date($note['created_at'])) ?>
+                                    <span class="btn btn-sm btn-secondary locked-flag" title="Locked (completed or past deadline)">
+                                        <i class="bi bi-lock-fill me-1"></i>Locked
+                                    </span>
                                 <?php endif; ?>
-                            </p>
-                            <div class="d-flex justify-content-end gap-2 pt-2 border-top">
-                                <a class="btn btn-sm btn-outline-primary" href="notes.php?edit=<?= (int) $note['id'] ?>">Edit</a>
-                                <form method="post" onsubmit="return confirm('Delete this note?');" class="m-0">
-                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                                    <input type="hidden" name="delete_note" value="1">
-                                    <input type="hidden" name="note_id" value="<?= (int) $note['id'] ?>">
-                                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+
+                                <form method="post" onsubmit="return confirm('Delete this goal?')">
+                                    <input type="hidden" name="delete_goal" value="1">
+                                    <input type="hidden" name="goal_id" value="<?= (int) $goal['id'] ?>">
+                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                 </form>
                             </div>
-                        <?php else: ?>
-                            <p class="note-date mb-2">
-                                <?php if ($note['created_at'] !== $note['updated_at']): ?>
-                                    Updated <?= htmlspecialchars(format_note_date($note['updated_at'])) ?>
-                                <?php else: ?>
-                                    Created <?= htmlspecialchars(format_note_date($note['created_at'])) ?>
-                                <?php endif; ?>
-                            </p>
-                            <div class="flex-grow-1 d-flex align-items-center justify-content-center text-muted small py-3">
-                                <i class="bi bi-lock-fill me-2"></i>Enter the account password above to view
-                            </div>
-                        <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             </div>
         <?php endforeach; ?>
-        <?php if (!$secureNotes): ?>
-            <div class="col-12 text-center text-muted py-4">No secure notes yet.</div>
+
+        <?php if (!$goals): ?>
+            <div class="col-12 text-center text-muted py-4">No goals added yet. Start by creating one above!</div>
         <?php endif; ?>
     </div>
 
-
-</div>
-
-<!-- Full-image viewer (lightbox) -->
-<div class="modal fade" id="fullImageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0" style="background:transparent;">
-            <div class="text-end mb-2">
-                <button type="button" class="btn btn-sm btn-dark rounded-3" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Close</button>
-            </div>
-            <div class="modal-body p-0 rounded-4 overflow-hidden" style="background:#0f172a;">
-                <img id="fullImageModalImg" src="" alt="Full image" class="w-100" style="max-height:82vh; object-fit:contain; display:block;">
-            </div>
-        </div>
-    </div>
+<?php endif; ?>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-function openImage(img) {
-    document.getElementById('fullImageModalImg').src = img.src;
-    new bootstrap.Modal(document.getElementById('fullImageModal')).show();
-}
-// Auto re-lock the view once the 3-minute unlock window elapses.
-<?php if ($secureUnlocked): ?>
-setTimeout(function () { location.reload(); }, <?= (int) ($secureUnlockRemaining * 1000) ?>);
-<?php endif; ?>
-document.getElementById('noteSearch').addEventListener('input', function () {
-    const q = this.value.trim().toLowerCase();
-    document.querySelectorAll('.note-item').forEach(function (item) {
-        const title = item.getAttribute('data-title') || '';
-        item.classList.toggle('d-none', q !== '' && !title.includes(q));
-    });
-});
-</script>
 </body>
 </html>
-<?php
-// Consume the single-use unlock: the notes stay open only for this page
-// view, so refreshing the page or navigating away re-locks them. A new
-// password entry is required to unlock again.
-unset($_SESSION['secure_notes_unlocked_at']);
-?>
