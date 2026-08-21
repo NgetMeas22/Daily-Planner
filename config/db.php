@@ -15,7 +15,7 @@ $conn->query("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
 $conn->select_db($dbName);
 $conn->set_charset('utf8mb4');
 
-const SCHEMA_VERSION = '4';
+const SCHEMA_VERSION = '5';
 
 $conn->query("CREATE TABLE IF NOT EXISTS meta (
     k VARCHAR(50) PRIMARY KEY,
@@ -95,10 +95,17 @@ if ($schemaVersion !== SCHEMA_VERSION) {
             deep_work TINYINT(1) NOT NULL DEFAULT 0,
             daily_reminders TINYINT(1) NOT NULL DEFAULT 1,
             focus_duration INT NOT NULL DEFAULT 45,
+            theme_mode ENUM('light','dark') NOT NULL DEFAULT 'light',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             CONSTRAINT fk_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
+
+    $hasThemeMode = $conn->query("SHOW COLUMNS FROM settings LIKE 'theme_mode'");
+    if ($hasThemeMode && $hasThemeMode->num_rows === 0) {
+        $conn->query("ALTER TABLE settings ADD COLUMN theme_mode ENUM('light','dark') NOT NULL DEFAULT 'light' AFTER focus_duration");
+        $conn->query("UPDATE settings SET theme_mode = 'light' WHERE theme_mode IS NULL OR theme_mode = ''");
+    }
 
     $conn->query("
         CREATE TABLE IF NOT EXISTS subjects (

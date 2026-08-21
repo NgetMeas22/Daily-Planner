@@ -124,7 +124,7 @@ $initial = strtoupper(substr($user['fullname'] ?? 'U', 0, 1));
         }
     </style>
 </head>
-<body>
+<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 <?php $activePage = 'profile'; include __DIR__ . '/includes/navbar.php'; ?>
 
 <div class="container py-4 py-md-5" style="max-width: 760px;">

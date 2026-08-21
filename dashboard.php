@@ -551,7 +551,7 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 }
     </style>
 </head>
-<body>
+<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 <?php $activePage = 'dashboard'; include __DIR__ . '/includes/navbar.php'; ?>
 
 <div class="container py-4">
@@ -1034,4 +1034,3 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 </script>
 </body>    
 </html>
-

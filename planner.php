@@ -218,7 +218,7 @@
             html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
         </style>
     </head>
-    <body class="text-gray-800 antialiased min-h-screen">
+    <body class="text-gray-800 antialiased min-h-screen" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 
         <?php $activePage = 'planner'; include __DIR__ . '/includes/navbar.php'; ?>
 

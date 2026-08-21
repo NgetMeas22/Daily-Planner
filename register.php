@@ -71,11 +71,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             animation: pageLoadingSpin 0.8s linear infinite;
             flex: 0 0 auto;
         }
+        body[data-theme="dark"] {
+            background: #0f172a !important;
+            color: #e2e8f0;
+        }
+        body[data-theme="dark"] .card {
+            background: #111827;
+            color: #e2e8f0;
+        }
+        body[data-theme="dark"] .form-control {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-color: #334155;
+        }
+        body[data-theme="dark"] .form-label,
+        body[data-theme="dark"] .text-muted {
+            color: #94a3b8 !important;
+        }
+        body[data-theme="dark"] .btn-outline-primary {
+            color: #e2e8f0;
+            border-color: #475569;
+        }
     </style>
 </head>
-<body class="bg-light min-vh-100 d-flex align-items-center py-5">
+<body class="bg-light min-vh-100 d-flex align-items-center py-5" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
     <div class="position-fixed top-0 end-0 p-3 d-flex gap-2">
-        <a class="btn btn-sm btn-outline-primary" href="?lang=en">English</a>
+        <a class="btn btn-sm btn-outline-primary" href="?lang=en"><?php echo htmlspecialchars(t('english')); ?></a>
         <a class="btn btn-sm btn-outline-primary" href="?lang=kh">ខ្មែរ</a>
     </div>
     <div class="container">
@@ -94,30 +115,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         <form method="post" action="">
                             <div class="mb-3">
-                                <label class="form-label text-secondary small fw-medium">Full Name</label>
+                                <label class="form-label text-secondary small fw-medium"><?php echo htmlspecialchars(t('full_name')); ?></label>
                                 <input type="text" class="form-control rounded-3" name="fullname" required>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-secondary small fw-medium">Username</label>
+                                <label class="form-label text-secondary small fw-medium"><?php echo htmlspecialchars(t('username')); ?></label>
                                 <input type="text" class="form-control rounded-3" name="username" required>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label text-secondary small fw-medium">Password</label>
+                                <label class="form-label text-secondary small fw-medium"><?php echo htmlspecialchars(t('password')); ?></label>
                                 <input type="password" class="form-control rounded-3" name="password" required>
                             </div>
 
                             <div class="mb-4">
-                                <label class="form-label text-secondary small fw-medium">Confirm Password</label>
+                                <label class="form-label text-secondary small fw-medium"><?php echo htmlspecialchars(t('confirm_password')); ?></label>
                                 <input type="password" class="form-control rounded-3" name="confirm_password" required>
                             </div>
 
-                            <button type="submit" class="btn btn-primary w-100 fw-bold py-2 rounded-3">Register Here</button>
+                            <button type="submit" class="btn btn-primary w-100 fw-bold py-2 rounded-3"><?php echo htmlspecialchars(t('register')); ?></button>
                         </form>
 
                         <div class="text-center small text-muted mt-3">
-                            Already have an account? <a class="text-primary text-decoration-none fw-bold" href="index.php">Login</a>
+                            Already have an account? <a class="text-primary text-decoration-none fw-bold" href="index.php"><?php echo htmlspecialchars(t('login')); ?></a>
                         </div>
                     </div>
                 </div>
@@ -132,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 el.dataset.loadingApplied = '1';
                 el.dataset.originalHtml = el.innerHTML;
                 el.classList.add('loading-inline');
-                el.innerHTML = '<span class="loading-inline-content"><span class="loading-inline-spinner" aria-hidden="true"></span><span>Loading...</span></span>';
+                el.innerHTML = '<span class="loading-inline-content"><span class="loading-inline-spinner" aria-hidden="true"></span><span><?php echo htmlspecialchars(t('loading')); ?></span></span>';
                 if (el.tagName === 'BUTTON') {
                     el.disabled = true;
                 }

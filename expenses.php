@@ -204,7 +204,7 @@ $incomeKhr = $incomeUsd * $khrRate;
         .exp-sub { font-size: .74rem; color: #94a3b8; margin-top: auto; padding-top: .8rem; }
     </style>
 </head>
-<body class="text-gray-800 antialiased min-h-screen">
+<body class="text-gray-800 antialiased min-h-screen" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 
 <?php $activePage = 'expenses'; include __DIR__ . '/includes/navbar.php'; ?>
 

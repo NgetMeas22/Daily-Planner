@@ -46,7 +46,7 @@ $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
     </style>
 </head>
-<body class="bg-light">
+<body class="bg-light" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 <?php $activePage = 'subjects'; include __DIR__ . '/includes/navbar.php'; ?>
 
 <div class="container py-4 py-md-5">

@@ -261,7 +261,7 @@ foreach ($goals as $goal) {
         }
     </style>
 </head>
-<body>
+<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 <?php $activePage = 'goals'; include __DIR__ . '/includes/navbar.php'; ?>
 
 <div class="container py-5">
