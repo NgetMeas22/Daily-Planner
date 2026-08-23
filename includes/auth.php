@@ -70,20 +70,30 @@ function require_login()
 }
 
 if (is_logged_in()) {
-    $themeMode = 'light';
-    $themeStmt = $conn->prepare('SELECT theme_mode FROM settings WHERE user_id = ? LIMIT 1');
-    $themeStmt->bind_param('i', $_SESSION['user_id']);
-    $themeStmt->execute();
-    $themeRow = $themeStmt->get_result()->fetch_assoc();
-    $themeStmt->close();
+    // Fast path: trust the long-lived cookie first so page loads skip the
+    // per-request settings query. The DB is only hit when no cookie exists
+    // yet (first login on a device); the choice is then persisted as a cookie.
+    if (!empty($_COOKIE['theme_mode'])) {
+        $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode']);
+    } else {
+        $themeMode = 'light';
+        $themeStmt = $conn->prepare('SELECT theme_mode FROM settings WHERE user_id = ? LIMIT 1');
+        $themeStmt->bind_param('i', $_SESSION['user_id']);
+        $themeStmt->execute();
+        $themeRow = $themeStmt->get_result()->fetch_assoc();
+        $themeStmt->close();
 
-    if ($themeRow && isset($themeRow['theme_mode'])) {
-        $themeMode = normalize_theme_mode($themeRow['theme_mode']);
-    } elseif (!empty($_COOKIE['theme_mode'])) {
-        $themeMode = normalize_theme_mode($_COOKIE['theme_mode']);
+        if ($themeRow && isset($themeRow['theme_mode'])) {
+            $themeMode = normalize_theme_mode($themeRow['theme_mode']);
+        }
+
+        setcookie('theme_mode', $themeMode, [
+            'expires' => time() + 60 * 60 * 24 * 365,
+            'path' => '/',
+            'samesite' => 'Lax',
+        ]);
+        $_SESSION['theme'] = $themeMode;
     }
-
-    $_SESSION['theme'] = $themeMode;
 } else {
     $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode'] ?? ($_SESSION['theme'] ?? 'light'));
 }

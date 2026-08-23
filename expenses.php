@@ -107,11 +107,20 @@ $stmt->bind_param('is', $userId, $selectedDate);
 $stmt->execute();
 $dateItems = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Fetch every entry (expense + income) for calculations & the report modal
-$stmtAll = $conn->prepare("SELECT id, title, amount, expense_date, type FROM expenses WHERE user_id = ? ORDER BY expense_date DESC, id DESC");
-$stmtAll->bind_param('i', $userId);
-$stmtAll->execute();
-$allItems = $stmtAll->get_result()->fetch_all(MYSQLI_ASSOC);
+// All-time totals in ONE aggregate query (avoids loading every row into PHP)
+$totStmt = $conn->prepare('SELECT type, COALESCE(SUM(amount), 0) AS total FROM expenses WHERE user_id = ? GROUP BY type');
+$totStmt->bind_param('i', $userId);
+$totStmt->execute();
+$allExpenseTotal = 0.0;
+$allIncomeTotal = 0.0;
+foreach ($totStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
+    if ($row['type'] === 'income') {
+        $allIncomeTotal = (float) $row['total'];
+    } else {
+        $allExpenseTotal = (float) $row['total'];
+    }
+}
+$allNet = $allIncomeTotal - $allExpenseTotal;
 
 // Split totals by type — selected date
 $dateExpenseTotal = 0.0;
@@ -124,18 +133,6 @@ foreach ($dateItems as $item) {
     }
 }
 $dateNet = $dateIncomeTotal - $dateExpenseTotal;
-
-// Split totals by type — all time
-$allExpenseTotal = 0.0;
-$allIncomeTotal = 0.0;
-foreach ($allItems as $item) {
-    if ($item['type'] === 'income') {
-        $allIncomeTotal += (float) $item['amount'];
-    } else {
-        $allExpenseTotal += (float) $item['amount'];
-    }
-}
-$allNet = $allIncomeTotal - $allExpenseTotal;
 
 // Monthly totals (used for the Remaining Budget calculation)
 $monthStart = date('Y-m-01', strtotime($selectedDate));
@@ -155,9 +152,13 @@ foreach ($monthlyStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
 // Income tops up the budget instead of only expenses eating into it.
 $remaining = max(0, $monthlyBudget - $monthlyExpenseTotal + $monthlyIncomeTotal);
 
-// Group all entries by date for the Report Modal / Breakdown Card
+// Group recent entries (last 90 days) by date for the Report Modal / Breakdown Card
+$reportStart = date('Y-m-d', strtotime('-90 days'));
+$repStmt = $conn->prepare("SELECT id, title, amount, expense_date, type FROM expenses WHERE user_id = ? AND expense_date >= ? ORDER BY expense_date DESC, id DESC");
+$repStmt->bind_param('is', $userId, $reportStart);
+$repStmt->execute();
 $reportByDate = [];
-foreach ($allItems as $item) {
+foreach ($repStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $item) {
     $reportByDate[$item['expense_date']][] = $item;
 }
 
@@ -354,7 +355,7 @@ $incomeKhr = $incomeUsd * $khrRate;
 
     <!-- Form: Add Income (ចំណូល) -->
     <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Add Income</span></h2>
+        <h2 class="text-lg font-bold text-gray-900 mb-4">Add Income</h2>
         <form method="post" class="grid grid-cols-1 sm:grid-cols-12 gap-4">
             <input type="hidden" name="add_income" value="1">
 
@@ -582,7 +583,7 @@ $incomeKhr = $incomeUsd * $khrRate;
 
             <div class="space-y-4">
                 <div class="flex justify-between items-center gap-2">
-                    <h4 class="text-sm font-bold text-gray-700">Detailed Daily Breakdown</h4>
+                    <h4 class="text-sm font-bold text-gray-700">Detailed Daily Breakdown <span class="fw-normal text-muted">(last 90 days)</span></h4>
                     <button type="button" onclick="downloadAllExpensesPdf()" class="bg-red-500 hover:bg-red-700 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>

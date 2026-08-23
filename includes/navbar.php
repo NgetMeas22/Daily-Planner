@@ -7,39 +7,7 @@ $themeMode = $_SESSION['theme'] ?? 'light';
 $csrfToken = $_SESSION['csrf_token'] ?? '';
 $returnTo = current_request_path();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_theme'])) {
-    if (!empty($_SESSION['user_id'])) {
-        $themeModeInput = normalize_theme_mode($_POST['theme_mode'] ?? 'light');
-        $_SESSION['theme'] = $themeModeInput;
-        setcookie('theme_mode', $themeModeInput, [
-            'expires' => time() + 60 * 60 * 24 * 365,
-            'path' => '/',
-            'samesite' => 'Lax',
-        ]);
-
-        if (isset($conn)) {
-            $stmt = $conn->prepare('SELECT id FROM settings WHERE user_id = ? LIMIT 1');
-            $stmt->bind_param('i', $_SESSION['user_id']);
-            $stmt->execute();
-            $exists = $stmt->get_result()->fetch_assoc();
-            $stmt->close();
-
-            if ($exists) {
-                $stmt = $conn->prepare('UPDATE settings SET theme_mode = ?, updated_at = NOW() WHERE user_id = ?');
-                $stmt->bind_param('si', $themeModeInput, $_SESSION['user_id']);
-                $stmt->execute();
-                $stmt->close();
-            } else {
-                $stmt = $conn->prepare('INSERT INTO settings (user_id, theme_mode) VALUES (?, ?)');
-                $stmt->bind_param('is', $_SESSION['user_id'], $themeModeInput);
-                $stmt->execute();
-                $stmt->close();
-            }
-        }
-
-        redirect(safe_return_path($_POST['return_to'] ?? $returnTo, 'setting.php'));
-    }
-}
+// Theme saving now lives in theme_toggle.php (instant fetch toggle + no-JS fallback).
 
 // Handle Profile Picture Upload Logic (image is stored INSIDE the database as a base64 data URI)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['user_avatar_file'])) {
@@ -78,6 +46,17 @@ $userName    = $_SESSION['user_name'] ?? 'User';
 $userAvatar  = $_SESSION['user_avatar'] ?? null;
 $userInitial = strtoupper(substr($userName, 0, 1));
 ?>
+
+<!-- Sync Bootstrap's native dark mode + load the shared theme overrides -->
+<script>
+  (function () {
+    var t = document.body.getAttribute('data-theme') || 'light';
+    try { localStorage.setItem('dp_theme', t); } catch (e) {}
+    if (t === 'dark') document.documentElement.setAttribute('data-bs-theme', 'dark');
+    else document.documentElement.removeAttribute('data-bs-theme');
+  })();
+</script>
+<link rel="stylesheet" href="assets/theme.css?v=1">
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
@@ -606,12 +585,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 <?php echo $activePage === 'profile' ? 'active' : ''; ?>" href="profile.php">
-                        <?php echo t('profile'); ?>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link px-3 <?php echo $activePage === 'settings' ? 'active' : ''; ?>" href="setting.php">
+                    <a class="nav-link px-3 <?php echo ($activePage === 'settings' || $activePage === 'profile') ? 'active' : ''; ?>" href="setting.php">
                         <?php echo t('settings'); ?>
                     </a>
                 </li>
@@ -622,19 +596,13 @@ $userInitial = strtoupper(substr($userName, 0, 1));
             <!-- Right Controls (User Profile, Language & Logout) -->
             <div class="navbar-right-controls d-flex flex-column flex-lg-row align-items-center gap-2 pt-2 pt-lg-0">
 
-                <form method="post" action="setting.php" class="m-0">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                <form method="post" action="theme_toggle.php" class="m-0" data-theme-form>
                     <input type="hidden" name="save_theme" value="1">
                     <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($returnTo); ?>">
                     <input type="hidden" name="theme_mode" value="<?php echo $themeMode === 'dark' ? 'light' : 'dark'; ?>">
-                    <button type="submit" class="btn btn-sm theme-switch-btn <?php echo $themeMode === 'dark' ? 'btn-warning' : 'btn-outline-light'; ?> fw-semibold rounded-pill d-inline-flex align-items-center gap-2">
-                        <?php if ($themeMode === 'dark'): ?>
-                            <i class="bi bi-sun-fill"></i>
-                            <span><?php echo t('light_mode'); ?></span>
-                        <?php else: ?>
-                            <i class="bi bi-moon-stars-fill"></i>
-                            <span><?php echo t('dark_mode'); ?></span>
-                        <?php endif; ?>
+                    <button type="submit" id="dpThemeBtn" class="btn btn-sm theme-switch-btn <?php echo $themeMode === 'dark' ? 'btn-warning' : 'btn-outline-light'; ?> fw-semibold rounded-pill d-inline-flex align-items-center gap-2">
+                        <span class="dp-theme-icon"><?php echo $themeMode === 'dark' ? '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>'; ?></span>
+                        <span class="dp-theme-label"><?php echo $themeMode === 'dark' ? t('light_mode') : t('dark_mode'); ?></span>
                     </button>
                 </form>
 
@@ -658,7 +626,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
                             </div>
                         </label>
                     </form>
-                    <a class="user-profile-name text-decoration-none" href="profile.php" title="<?php echo t('profile'); ?>"><?php echo htmlspecialchars($userName); ?></a>
+                    <a class="user-profile-name text-decoration-none" href="setting.php?tab=account" title="<?php echo t('profile'); ?>"><?php echo htmlspecialchars($userName); ?></a>
                 </div>
 
                 <!-- Language Switcher -->
@@ -686,6 +654,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
 </nav>
 
 <script>
+  /* ---------- Mobile menu bindings (re-run on every soft navigation) ---------- */
   (function () {
     const navbar = document.getElementById('mainNavbar');
     const toggler = document.querySelector('.custom-navbar .navbar-toggler');
@@ -695,10 +664,9 @@ $userInitial = strtoupper(substr($userName, 0, 1));
 
     const setExpanded = (expanded) => {
       toggler.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      document.body.style.overflow = expanded ? 'hidden' : '';
-      if (backdrop) {
-        backdrop.classList.toggle('show', expanded);
-      }
+      if (expanded) document.body.style.overflow = 'hidden';
+      else if (!document.querySelector('.modal.show')) document.body.style.overflow = '';
+      if (backdrop) backdrop.classList.toggle('show', expanded);
     };
 
     const closeNavbar = () => {
@@ -711,19 +679,15 @@ $userInitial = strtoupper(substr($userName, 0, 1));
       setExpanded(isOpen);
     });
 
-    if (closeBtn) {
-      closeBtn.addEventListener('click', closeNavbar);
-    }
+    if (closeBtn) closeBtn.addEventListener('click', closeNavbar);
 
-    navbar.querySelectorAll('a, button:not(#navbarCloseBtn)').forEach((el) => {
+    navbar.querySelectorAll('a, button:not(#navbarCloseBtn):not(#dpThemeBtn)').forEach((el) => {
       el.addEventListener('click', function () {
         if (window.innerWidth < 992) closeNavbar();
       });
     });
 
-    if (backdrop) {
-      backdrop.addEventListener('click', closeNavbar);
-    }
+    if (backdrop) backdrop.addEventListener('click', closeNavbar);
 
     window.addEventListener('resize', function () {
       if (window.innerWidth >= 992) {
@@ -733,11 +697,16 @@ $userInitial = strtoupper(substr($userName, 0, 1));
         setExpanded(navbar.classList.contains('show'));
       }
     });
+  })();
+
+  /* ---------- Inline loading spinner on form submits (delegated, registered once) ---------- */
+  (function () {
+    if (window.__dpSubmitLoading) return;
+    window.__dpSubmitLoading = true;
 
     const setInlineLoading = (el) => {
       if (!el || el.dataset.loadingApplied === '1') return;
       el.dataset.loadingApplied = '1';
-      el.dataset.originalHtml = el.innerHTML;
       el.classList.add('loading-inline');
       el.innerHTML = '<span class="loading-inline-content"><span class="loading-inline-spinner" aria-hidden="true"></span><span><?php echo htmlspecialchars(t('loading')); ?></span></span>';
       if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') {
@@ -746,12 +715,260 @@ $userInitial = strtoupper(substr($userName, 0, 1));
     };
 
     document.addEventListener('submit', function (event) {
-      // Ignore avatar upload submit so inline loading doesn't freeze the avatar preview
-      if (event.target && event.target.id === 'avatarForm') return;
+      if (!event.target || event.target.id === 'avatarForm') return;
+      if (event.target.hasAttribute && event.target.hasAttribute('data-theme-form')) return; // instant theme toggle handles itself
 
       const submitter = event.submitter || event.target.querySelector('button[type="submit"], input[type="submit"]');
       setInlineLoading(submitter);
     }, true);
+  })();
 
+  /* ---------- App shell: instant theme toggle + PJAX navigation + prefetch ----------
+     Registered once on the persistent `document`, so it survives body swaps. */
+  (function () {
+    if (window.__dpShell) return;
+    window.__dpShell = true;
+
+    var progressEl = null;
+    function progressBar(show) {
+      // The bar lives inside <body>, so re-create it after every body swap
+      if (!progressEl || !progressEl.isConnected) {
+        progressEl = document.createElement('div');
+        progressEl.id = 'dpProgress';
+        document.body.appendChild(progressEl);
+      }
+      if (show) {
+        progressEl.style.transition = 'none';
+        progressEl.style.width = '0';
+        void progressEl.offsetWidth;
+        progressEl.style.transition = 'width .25s ease, opacity .3s ease';
+        progressEl.classList.add('active');
+        progressEl.style.width = '72%';
+      } else {
+        progressEl.style.width = '100%';
+        setTimeout(function () { progressEl && progressEl.classList.remove('active'); }, 220);
+      }
+    }
+
+    function syncBsTheme(theme) {
+      try { localStorage.setItem('dp_theme', theme); } catch (e) {}
+      if (theme === 'dark') document.documentElement.setAttribute('data-bs-theme', 'dark');
+      else document.documentElement.removeAttribute('data-bs-theme');
+      var btn = document.getElementById('dpThemeBtn');
+      if (btn) {
+        var dark = theme === 'dark';
+        btn.classList.toggle('btn-warning', dark);
+        btn.classList.toggle('btn-outline-light', !dark);
+        var icon = btn.querySelector('.dp-theme-icon');
+        var label = btn.querySelector('.dp-theme-label');
+        if (icon) icon.innerHTML = dark ? '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
+        if (label) label.textContent = dark ? <?php echo json_encode(t('light_mode')); ?> : <?php echo json_encode(t('dark_mode')); ?>;
+        var input = btn.closest('form') && btn.closest('form').querySelector('input[name="theme_mode"]');
+        if (input) input.value = dark ? 'light' : 'dark';
+      }
+    }
+
+    /* ----- Instant theme toggle: flip locally now, persist in background ----- */
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-theme-form')) return;
+      e.preventDefault();
+
+      var nextModeInput = form.querySelector('input[name="theme_mode"]');
+      var next = nextModeInput ? nextModeInput.value : 'light';
+      var current = document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      if (next === current) next = current === 'dark' ? 'light' : 'dark';
+
+      document.body.setAttribute('data-theme', next);
+      syncBsTheme(next);
+      window.dispatchEvent(new CustomEvent('dp:themechange', { detail: { theme: next } }));
+
+      var fd = new FormData(form);
+      fd.set('theme_mode', next);
+      fetch(form.action || 'theme_toggle.php', {
+        method: 'POST',
+        body: fd,
+        headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        keepalive: true
+      }).catch(function () {});
+    }, true);
+
+    /* ----- Prefetch internal pages on hover / touch so clicks feel instant ----- */
+    var prefetched = Object.create(null);
+    function prefetch(href) {
+      if (!href || prefetched[href]) return;
+      prefetched[href] = true;
+      var l = document.createElement('link');
+      l.rel = 'prefetch';
+      l.href = href;
+      document.head.appendChild(l);
+    }
+    document.addEventListener('pointerenter', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href$=".php"], a[href*=".php?"]') : null;
+      if (a) prefetch(a.href);
+    }, { capture: true, passive: true });
+    document.addEventListener('touchstart', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href$=".php"], a[href*=".php?"]') : null;
+      if (a) prefetch(a.href);
+    }, { capture: true, passive: true });
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(function () {
+        document.querySelectorAll('.custom-navbar .nav-link[href$=".php"]').forEach(function (a) { prefetch(a.href); });
+      }, { timeout: 2500 });
+    }
+
+    /* ----- Soft navigation: swap <body> without a full page reload ----- */
+    var navToken = 0;
+
+    function hashKey(str) {
+      var h = 5381;
+      for (var i = 0; i < str.length; i++) { h = ((h << 5) + h + str.charCodeAt(i)) | 0; }
+      return 'h' + (h >>> 0).toString(36) + '_' + str.length;
+    }
+
+    function headKey(node) {
+      if (node.tagName === 'LINK' && node.getAttribute('rel') === 'stylesheet') return 'css:' + node.getAttribute('href');
+      if (node.tagName === 'SCRIPT' && node.src) return 'js:' + node.src;
+      if (node.tagName === 'STYLE') return 'style:' + hashKey(node.textContent.replace(/\s+/g, ' ').trim());
+      return null;
+    }
+
+    function ensureHead(doc) {
+      var loads = [];
+      var seen = window.__dpHeadKeys = window.__dpHeadKeys || new Set();
+      doc.head.querySelectorAll('link[rel="stylesheet"], script[src], style').forEach(function (node) {
+        var key = headKey(node);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        var clone = document.createElement(node.tagName === 'LINK' ? 'link' : node.tagName === 'SCRIPT' ? 'script' : 'style');
+        if (node.tagName === 'LINK') {
+          clone.rel = 'stylesheet';
+          clone.href = node.getAttribute('href');
+          loads.push(new Promise(function (res) { clone.onload = res; clone.onerror = res; }));
+        } else if (node.tagName === 'SCRIPT') {
+          Array.prototype.forEach.call(node.attributes, function (attr) { clone.setAttribute(attr.name, attr.value); });
+          loads.push(new Promise(function (res) { clone.onload = res; clone.onerror = res; }));
+        } else {
+          clone.textContent = node.textContent;
+        }
+        document.head.appendChild(clone);
+      });
+      return Promise.all(loads);
+    }
+
+    function execScript(old) {
+      return new Promise(function (resolve) {
+        var s = document.createElement('script');
+        Array.prototype.forEach.call(old.attributes, function (attr) { s.setAttribute(attr.name, attr.value); });
+        if (old.src) {
+          s.onload = function () { resolve(); };
+          s.onerror = function () { resolve(); };
+          s.src = old.src;
+          document.body.appendChild(s);
+        } else {
+          s.textContent = old.textContent;
+          document.body.appendChild(s);
+          resolve();
+        }
+      });
+    }
+
+    function cleanupAfterSwap() {
+      document.body.classList.remove('modal-open');
+      document.querySelectorAll('.modal-backdrop').forEach(function (b) { b.remove(); });
+      document.querySelectorAll('.tooltip, .popover').forEach(function (t) { t.remove(); });
+      if (window.__notesReloadTimer) { clearTimeout(window.__notesReloadTimer); window.__notesReloadTimer = null; }
+      window.scrollTo(0, 0);
+    }
+
+    function shouldInterceptLink(a) {
+      if (!a || a.target === '_blank' || a.hasAttribute('download')) return false;
+      if (a.hasAttribute('onclick')) return false; // let confirm() handlers work
+      if (a.dataset && a.dataset.bsToggle === 'modal') return false;
+      var href = a.getAttribute('href');
+      if (!href || href.charAt(0) === '#') return false;
+      var url;
+      try { url = new URL(a.href, location.href); } catch (e) { return false; }
+      if (url.origin !== location.origin) return false;
+      if (!/\.php($|\?)/.test(url.pathname) && !/\.php$/.test(url.pathname)) return false;
+      return true;
+    }
+
+    function navigate(urlStr, push) {
+      var token = ++navToken;
+      progressBar(true);
+
+      return fetch(urlStr, { headers: { 'X-DP-Nav': '1' }, credentials: 'same-origin' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          if (token !== navToken) return;
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+
+          return ensureHead(doc).then(function () {
+            if (token !== navToken) return;
+
+            document.title = doc.title || document.title;
+
+            var frag = document.createDocumentFragment();
+            Array.prototype.slice.call(doc.body.childNodes).forEach(function (n) { frag.appendChild(document.importNode(n, true)); });
+
+            var scripts = [];
+            Array.prototype.slice.call(frag.querySelectorAll('script')).forEach(function (s) {
+              scripts.push(s);
+              s.parentNode.removeChild(s);
+            });
+
+            var newTheme = doc.body.getAttribute('data-theme');
+            if (newTheme) document.body.setAttribute('data-theme', newTheme);
+            syncBsTheme(document.body.getAttribute('data-theme') || 'light');
+
+            document.body.replaceChildren(frag);
+            cleanupAfterSwap();
+            progressBar(false);
+
+            if (push && location.href !== urlStr) history.pushState({ dp: true }, '', urlStr);
+
+            var chain = Promise.resolve();
+            scripts.forEach(function (s) {
+              chain = chain.then(function () {
+                if (token !== navToken) return;
+                return execScript(s);
+              });
+            });
+            return chain;
+          });
+        })
+        .catch(function () {
+          window.location.href = urlStr; // graceful fallback to a full load
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest ? e.target.closest('a') : null;
+      if (!shouldInterceptLink(a)) return;
+      e.preventDefault();
+      navigate(a.href, true);
+    }, true);
+
+    document.addEventListener('submit', function (e) {
+      var f = e.target;
+      if (!(f instanceof HTMLFormElement)) return;
+      if ((f.method || 'get').toLowerCase() !== 'get') return; // POSTs keep normal PRG flow
+      if (f.target === '_blank' || f.hasAttribute('data-no-pjax')) return;
+      var url;
+      try { url = new URL(f.getAttribute('action') || location.href, location.href); } catch (err) { return; }
+      if (url.origin !== location.origin || !/\.php($|\?)/.test(url.pathname)) return;
+      e.preventDefault();
+      var params = new URLSearchParams(new FormData(f)).toString();
+      navigate(url.pathname + (params ? '?' + params : ''), true);
+    }, true);
+
+    window.addEventListener('popstate', function () {
+      navigate(location.href, false);
+    });
   })();
 </script>

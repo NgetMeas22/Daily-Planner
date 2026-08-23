@@ -11,9 +11,10 @@ A **student-focused "Daily Planner" web app** built with **procedural PHP + MySQ
 - **Goals** — long-term goals with target hours, logged hours, auto-computed progress %, category, priority, deadline. Overdue goals (past deadline & not completed) are highlighted red.
 - **Expenses** — expenses AND income in dual currency (USD/KHR), per-user monthly budget, remaining-budget calculation, per-day/month/all-time totals.
 - **Notes** — two kinds of notes stored in DB: **Simple** (visible immediately) and **Secure** (content is hidden until the user enters their account password to unlock it). Both can store an image directly in the DB.
-- **Settings** — functional settings page (`setting.php`): per-user preferences (deep work mode, daily reminders, default focus duration) persisted in the `settings` table, plus account overview and account deletion.
-- **Profile** — functional account page: edit full name, change password, upload profile photo (stored in DB).
-- **Dashboard** — dynamic stat cards (live percentages), study-hours chart (day/week/month range), subject distribution chart, quick-add forms, recent lists.
+- **Settings** — functional settings page (`setting.php`): per-user preferences (deep work mode, daily reminders, default focus duration) persisted in the `settings` table. **Profile was merged into it** as tabs (`?tab=account|preferences|danger`): Account = avatar upload + full name + change password; Preferences = the settings form; Danger Zone = account deletion.
+- **Theme** — light/dark mode with an **instant toggle** in the navbar (no page reload): JS flips `body[data-theme]` immediately and persists in the background via `theme_toggle.php` (fetch). Shared dark styles live in `assets/theme.css`; Bootstrap's native dark mode is driven by `data-bs-theme` on `<html>`.
+- **Dashboard** — dynamic stat cards (live percentages), study-hours chart (day/week/month range), subject distribution chart, quick-add forms, recent lists. Charts re-render themselves on theme change via the `dp:themechange` event.
+- **Soft navigation (PJAX)** — internal `.php` link clicks are intercepted by navbar JS: only the `<body>` is swapped (no full reload), head resources are merged/deduped, body scripts are replayed in order, history works via pushState/popstate, and any fetch error falls back to a normal navigation. GET-form submits are also intercepted; POST forms keep the normal PRG flow.
 - **Auth** — register / login / logout, password hashing, session-based.
 
 The UI is **bilingual (English / Khmer)**, styled with **Bootstrap 5** and **Tailwind (CDN)** plus custom CSS, and **Chart.js** for dashboard charts.
@@ -51,11 +52,13 @@ daily_planner/
 ├── goals.php               # Goal tracker: add, log hours, delete, progress bars, OVERDUE highlighting
 ├── expenses.php            # Expense/income dual-currency tracking + budget + report/PDF (4 stat cards with top accent bars)
 ├── notes.php               # Notes: add/edit/delete simple + password-protected (secure) notes; optional image stored in DB
-├── profile.php             # Account page: edit name, change password, upload photo (stored in DB)
-├── setting.php             # Settings: preferences (deep work/reminders/focus duration) + account overview + delete account
+├── profile.php             # STUB: redirects to setting.php?tab=account (profile was merged into settings)
+├── setting.php             # Settings with tabs (?tab=account|preferences|danger): profile edit + avatar + password, preferences, delete account
+├── theme_toggle.php        # POST endpoint persisting theme (JSON for fetch toggles, redirect for no-JS fallback form)
 ├── users.php               # EMPTY (unused)
 ├── uploads/avatars/        # Legacy avatar files (kept for backward compat only)
-├── assets/                 # Static assets directory
+├── assets/
+│   └── theme.css           # Shared dark-mode stylesheet, loaded by navbar for every page
 └── includes.zip            # Stale zip of includes/ — can be ignored/deleted
 ```
 
@@ -105,7 +108,10 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - **Note timezone:** `config/db.php` sets `date_default_timezone_set('Asia/Phnom_Penh')` on first line. `format_note_date()` (notes.php) renders `created_at`/`updated_at` (stored in MySQL SYSTEM = local time) with this timezone. Do not remove the timezone line — the default PHP tz on this machine (Europe/Berlin) would render times 5 hours off.
 - **Note images:** `upload_note_image()` in `notes.php` validates type (jpg/jpeg/png/webp/gif) and size (≤ 2 MB), returns `null` (no file), `false` (invalid), or a base64 `data:` URI stored in `notes.image_data`. On edit the user may replace or remove the image ("Remove image" checkbox). Form must be `enctype="multipart/form-data"`; field name is `note_image`. Clicking a note image opens a Bootstrap modal lightbox (`#fullImageModal`, `openImage(img)` in the page JS) showing the full image.
 - **Note storage:** `notes.title` and `notes.content` are stored **exactly as typed** — they are never hashed or encrypted. The only value hashed anywhere in the app is the account password (`users.password` via `password_hash`); a `$2y$10$...` string can therefore only legitimately appear in `users.password`. If a bcrypt-looking string shows up in a note's `content`, it was pasted in as literal text (e.g., a browser password-manager autofill), not produced by the app.
-- **Settings:** `setting.php` loads (or creates) the row from `settings` for the logged-in user, saves `deep_work`/`daily_reminders` checkboxes + `focus_duration` (whitelist 25/45/60/90) via `UPDATE ... SET updated_at = NOW()`, and offers account deletion (`DELETE FROM users` cascades everything, then session is destroyed).
+- **Settings:** `setting.php` is tabbed via `?tab=account|preferences|danger` (server-rendered active state). Preferences save = `save_settings` POST (`deep_work`/`daily_reminders` checkboxes + `focus_duration` whitelist 25/45/60/90 + `theme_mode`, `UPDATE ... SET updated_at = NOW()`). Account tab hosts the former profile handlers: `save_profile` (fullname) and `change_password` (verify current, min 6 chars, match confirm). Danger tab hosts `delete_account` (requires account password, `DELETE FROM users` cascades everything, session destroyed). ALL forms on this page require the hidden `csrf_token`; success feedback flows through `$_SESSION['flash_success']`/`flash_error` + PRG redirect back to the same tab.
+- **Theme resolution:** `includes/auth.php` reads `$_COOKIE['theme_mode']` first (no DB hit per request); only when no cookie exists does it query `settings.theme_mode` once and set the cookie. The instant toggle posts to `theme_toggle.php` which updates session + cookie + DB and answers JSON when called via fetch. Pages must render `<body data-theme="...">` from `current_theme()`; navbar JS syncs `data-bs-theme` for Bootstrap.
+- **Dashboard stat queries:** all counts/percentages/budget/spent come from ONE prepared subselect query (was 10 separate queries).
+- **Expenses totals:** all-time income/expense totals come from a `SUM ... GROUP BY type` aggregate (never fetch-all); the report modal lists only the last 90 days of entries grouped by date.
 - **Dashboard dynamic stat cards:**
   - Subjects = % of subjects that have planner sessions; subtext "N used in planner".
   - Planner = % of planner tasks completed.
@@ -129,6 +135,8 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - **i18n:** only the navbar and a few strings use `t('key')`. If you add new UI strings, add keys to both `en` and `kh` arrays in `includes/i18n.php` and keep the `t('english' | 'khmer')` usage in the language pill.
 - **Date handling:** validate user-supplied dates with `preg_match('/^\d{4}-\d{2}-\d{2}$/', ...)` before use (see `planner.php`, `expenses.php`).
 - **No build step** — CSS/JS are CDN `<link>`/`<script>` tags. New styles go in the page's own `<style>` block.
+- **PJAX compatibility is mandatory for every page:** keep `<style>` blocks in `<head>` and page scripts at the END of `<body>`. The navbar shell swaps the whole body, merges head resources (deduped), then replays body scripts in order. Page JS must be idempotent-safe: guard global bindings (`window.__dpX` flags) if you bind to anything outside your own body content. Charts/canvases must re-render on the `dp:themechange` event (see dashboard.php `renderCharts()` pattern) and guard against their canvas being gone (`if (!document.getElementById(...)) return;`). Timers that should not survive navigation go on `window.` (e.g. notes' auto-lock timer is cleared by the shell's `cleanupAfterSwap()` via `window.__notesReloadTimer`).
+- **Theme toggle forms:** any form posting to `theme_toggle.php` with hidden `theme_mode` + `return_to` fields works; add the `data-theme-form` attribute ONLY on the navbar instant-toggle form (JS intercepts it).
 
 ## 8. Authentication & security notes
 
@@ -144,7 +152,8 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - **Schema-version gate in `config/db.php`:** all `CREATE TABLE` / `ALTER TABLE` checks are wrapped in a version gate. They run only once per `SCHEMA_VERSION` and the result is cached in the `meta` table, so later page loads skip ~20 `SHOW COLUMNS` checks (this was the main source of slow page loads). **Always bump `SCHEMA_VERSION` when you add a new migration** or existing installs won't upgrade.
 - **Planner history is windowed:** `planner.php` now fetches only the last 30 days of history for the report modal + "copy previous day" list; all-time totals come from a cheap `COUNT`/`SUM` aggregate query instead of loading every row. `goals.php` uses prepared statements for all reads/writes (was interpolating `$userId`).
 
-- **`setting.php` is now functional** (was a mock): it persists preferences to the `settings` table, links to `profile.php` for account editing, and supports account deletion. Its own POST forms require the hidden `csrf_token`. The old broken sidebar links to `settings.php` (plural) are gone.
+- **`setting.php` is now functional AND hosts the profile page** (merged): tabs Account/Preferences/Danger Zone via `?tab=`. `profile.php` is a 5-line redirect stub to `setting.php?tab=account` — old links keep working. Its POST forms require the hidden `csrf_token`. The old broken sidebar links to `settings.php` (plural) are gone.
+- **Theme gotchas:** `theme_toggle.php` requires POST with a `theme_mode` field (no CSRF — it only flips a preference). The avatar upload handler lives in `includes/navbar.php` and triggers on ANY form field named `user_avatar_file`, then redirects back to the current URL — setting.php's account tab reuses that exact field name for its own upload control.
 - **`users.php`, `includes/header.php`, `includes/footer.php` are empty** placeholder files. `header.php`/`footer.php` are not used anywhere.
 - **`includes.zip`** is a stale archive of `includes/` — ignore it; don't treat it as source of truth.
 - Dashboard stat cards previously had **hardcoded decorative progress rings**; they are now computed from real data in `dashboard.php`.

@@ -15,7 +15,7 @@ $conn->query("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
 $conn->select_db($dbName);
 $conn->set_charset('utf8mb4');
 
-const SCHEMA_VERSION = '5';
+const SCHEMA_VERSION = '6';
 
 $conn->query("CREATE TABLE IF NOT EXISTS meta (
     k VARCHAR(50) PRIMARY KEY,
@@ -177,6 +177,11 @@ if ($schemaVersion !== SCHEMA_VERSION) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
 
+    $hasGoalsUserStatusDeadlineIdx = $conn->query("SHOW INDEX FROM goals WHERE Key_name = 'idx_goals_user_status_deadline'");
+    if ($hasGoalsUserStatusDeadlineIdx && $hasGoalsUserStatusDeadlineIdx->num_rows === 0) {
+        $conn->query("ALTER TABLE goals ADD INDEX idx_goals_user_status_deadline (user_id, status, deadline, id)");
+    }
+
     // Add new goal fields to databases created before category and priority existed.
     $hasGoalCategory = $conn->query("SHOW COLUMNS FROM goals LIKE 'category'");
     if ($hasGoalCategory && $hasGoalCategory->num_rows === 0) {
@@ -208,6 +213,11 @@ if ($schemaVersion !== SCHEMA_VERSION) {
             CONSTRAINT fk_expenses_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
+
+    $hasNotesUserUpdatedIdx = $conn->query("SHOW INDEX FROM notes WHERE Key_name = 'idx_notes_user_updated'");
+    if ($hasNotesUserUpdatedIdx && $hasNotesUserUpdatedIdx->num_rows === 0) {
+        $conn->query("ALTER TABLE notes ADD INDEX idx_notes_user_updated (user_id, updated_at)");
+    }
 
     // Add the type column to existing expense tables.
     $hasExpenseType = $conn->query("SHOW COLUMNS FROM expenses LIKE 'type'");

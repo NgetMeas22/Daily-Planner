@@ -59,6 +59,8 @@ $translations = [
         'password' => 'Password',
         'full_name' => 'Full Name',
         'confirm_password' => 'Confirm Password',
+        'member_since' => 'Member since',
+        'security' => 'Security',
     ],
     'kh' => [
         'app_name' => 'ផែនការប្រចាំថ្ងៃ',
@@ -104,6 +106,8 @@ $translations = [
         'password' => 'ពាក្យសម្ងាត់',
         'full_name' => 'ឈ្មោះពេញ',
         'confirm_password' => 'បញ្ជាក់ពាក្យសម្ងាត់',
+        'member_since' => 'សមាជិកតាំងពី',
+        'security' => 'សុវត្ថិភាព',
     ],
 ];
 

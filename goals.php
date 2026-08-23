@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_goal'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_goal'])) {
     $goalId = (int) ($_POST['goal_id'] ?? 0);
 
-    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt = $conn->prepare('SELECT id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status, notes, created_at FROM goals WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $goalId, $userId);
     $stmt->execute();
     $currentGoal = $stmt->get_result()->fetch_assoc();
@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_progress'])) {
     $goalId = (int) $_POST['goal_id'];
     $addHours = (int) $_POST['add_hours'];
 
-    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt = $conn->prepare('SELECT id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status, notes, created_at FROM goals WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $goalId, $userId);
     $stmt->execute();
     $curr = $stmt->get_result()->fetch_assoc();
@@ -148,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_goal'])) {
 $viewGoal = null;
 if (isset($_GET['view'])) {
     $vid = (int) $_GET['view'];
-    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt = $conn->prepare('SELECT id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status, notes, created_at FROM goals WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $vid, $userId);
     $stmt->execute();
     $viewGoal = $stmt->get_result()->fetch_assoc();
@@ -162,7 +162,7 @@ if (isset($_GET['view'])) {
 $editGoal = null;
 if (isset($_GET['edit'])) {
     $eid = (int) $_GET['edit'];
-    $stmt = $conn->prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
+    $stmt = $conn->prepare('SELECT id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status, notes, created_at FROM goals WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $eid, $userId);
     $stmt->execute();
     $editGoal = $stmt->get_result()->fetch_assoc();
@@ -175,7 +175,8 @@ if (isset($_GET['edit'])) {
 
 // --- FETCH ALL GOALS (overdue first, then in progress, then completed) ------
 $stmt = $conn->prepare("
-    SELECT * FROM goals
+    SELECT id, goal_name, category, priority, target_hours, completed_hours, progress, deadline, status, notes, created_at
+    FROM goals
     WHERE user_id = ?
     ORDER BY
         CASE
@@ -259,9 +260,36 @@ foreach ($goals as $goal) {
             color: #94a3b8;
             font-style: italic;
         }
+        body[data-theme="dark"] {
+            background: #0b1120 !important;
+            color: #e2e8f0 !important;
+        }
+        body[data-theme="dark"] .soft-card,
+        body[data-theme="dark"] .stat-mini,
+        body[data-theme="dark"] .notes-card,
+        body[data-theme="dark"] .card {
+            background: #111827 !important;
+            color: #e2e8f0 !important;
+            border-color: #243047 !important;
+        }
+        body[data-theme="dark"] .text-muted,
+        body[data-theme="dark"] .small,
+        body[data-theme="dark"] .form-label {
+            color: #94a3b8 !important;
+        }
+        body[data-theme="dark"] .badge.bg-secondary,
+        body[data-theme="dark"] .badge.bg-light {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        body[data-theme="dark"] .form-control {
+            background: #0f172a !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
     </style>
 </head>
-<body>
+<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
 <?php $activePage = 'goals'; include __DIR__ . '/includes/navbar.php'; ?>
 
 <div class="container py-5">

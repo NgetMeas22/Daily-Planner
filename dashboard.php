@@ -99,26 +99,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch counts
+// ---- All dashboard stats in ONE round-trip (subselects instead of 10 separate queries) ----
+$monthStart = date('Y-m-01');
+$monthEnd   = date('Y-m-t');
+$stmt = $conn->prepare("
+    SELECT
+      (SELECT COUNT(*) FROM subjects WHERE user_id = ?) AS subjects,
+      (SELECT COUNT(*) FROM planner  WHERE user_id = ?) AS planner,
+      (SELECT COUNT(*) FROM goals    WHERE user_id = ?) AS goals,
+      (SELECT COUNT(*) FROM expenses WHERE user_id = ?) AS expenses,
+      (SELECT COUNT(DISTINCT subject_id) FROM planner WHERE user_id = ?) AS subjects_used,
+      (SELECT COUNT(*) FROM planner WHERE user_id = ? AND (progress >= 100 OR status = 'Completed')) AS planner_done,
+      (SELECT COUNT(*) FROM goals    WHERE user_id = ? AND status = 'Completed') AS goals_done,
+      (SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = ? AND type = 'expense' AND expense_date BETWEEN ? AND ?) AS spent,
+      (SELECT COALESCE(monthly_budget, 0) FROM users WHERE id = ?) AS budget
+");
+$stmt->bind_param('iiiiiiiissi', $userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId, $monthStart, $monthEnd, $userId);
+$stmt->execute();
+$stats = $stmt->get_result()->fetch_assoc() ?: [];
+$stmt->close();
+
 $counts = [
-    'subjects' => (int) ($conn->query("SELECT COUNT(*) AS c FROM subjects WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0),
-    'planner'  => (int) ($conn->query("SELECT COUNT(*) AS c FROM planner WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0),
-    'goals'    => (int) ($conn->query("SELECT COUNT(*) AS c FROM goals WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0),
-    'expenses' => (int) ($conn->query("SELECT COUNT(*) AS c FROM expenses WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0),
+    'subjects' => (int) ($stats['subjects'] ?? 0),
+    'planner'  => (int) ($stats['planner'] ?? 0),
+    'goals'    => (int) ($stats['goals'] ?? 0),
+    'expenses' => (int) ($stats['expenses'] ?? 0),
 ];
 
 // ---- Dynamic stat-card percentages (dashboards should reflect real data) ----
-$subjectsUsed = (int) ($conn->query("SELECT COUNT(DISTINCT subject_id) AS c FROM planner WHERE user_id = {$userId}")->fetch_assoc()['c'] ?? 0);
+$subjectsUsed = (int) ($stats['subjects_used'] ?? 0);
 $subjectsPct = $counts['subjects'] > 0 ? (int) round(($subjectsUsed / $counts['subjects']) * 100) : 0;
 
-$plannerDone = (int) ($conn->query("SELECT COUNT(*) AS c FROM planner WHERE user_id = {$userId} AND (progress >= 100 OR status = 'Completed')")->fetch_assoc()['c'] ?? 0);
+$plannerDone = (int) ($stats['planner_done'] ?? 0);
 $plannerPct = $counts['planner'] > 0 ? (int) round(($plannerDone / $counts['planner']) * 100) : 0;
 
-$goalsDone = (int) ($conn->query("SELECT COUNT(*) AS c FROM goals WHERE user_id = {$userId} AND status = 'Completed'")->fetch_assoc()['c'] ?? 0);
+$goalsDone = (int) ($stats['goals_done'] ?? 0);
 $goalsPct = $counts['goals'] > 0 ? (int) round(($goalsDone / $counts['goals']) * 100) : 0;
 
-$budget = (float) ($conn->query("SELECT monthly_budget FROM users WHERE id = {$userId}")->fetch_assoc()['monthly_budget'] ?? 0);
-$spentThisMonth = (float) ($conn->query("SELECT COALESCE(SUM(amount), 0) AS c FROM expenses WHERE user_id = {$userId} AND type = 'expense' AND expense_date BETWEEN '" . date('Y-m-01') . "' AND '" . date('Y-m-t') . "'")->fetch_assoc()['c'] ?? 0);
+$budget = (float) ($stats['budget'] ?? 0);
+$spentThisMonth = (float) ($stats['spent'] ?? 0);
 $expensesPct = $budget > 0 ? (int) round(($spentThisMonth / $budget) * 100) : 0;
 
 $ringOffset = fn($pct) => (string) round(113 - 113 * $pct / 100, 1);
@@ -967,30 +986,56 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
     const subjectValues = <?= json_encode($subjectValues) ?>;
     const palette = ['#5457E5', '#0F9B8E', '#E8A93A', '#E15B5B', '#8B5CF6'];
 
-    new Chart(document.getElementById('weeklyChart'), {
-        type: 'line',
-        data: {
-            labels: weeklyLabels,
-            datasets: [{
-                data: weeklyValues,
-                borderColor: '#5457E5',
-                backgroundColor: 'rgba(84,87,229,0.10)',
-                fill: true,
-                tension: 0.35,
-                pointRadius: 4,
-                pointBackgroundColor: '#5457E5',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                borderWidth: 2.5,
-            }]
-        },
+    function chartTheme() {
+        const dark = document.body.getAttribute('data-theme') === 'dark';
+        return dark ? {
+            grid: '#243047',
+            tick: '#94a3b8',
+            tooltipBg: '#0f172a',
+            pointBorder: '#0f172a',
+            lineFill: 'rgba(99,102,241,0.18)',
+            doughnutBorder: '#111827'
+        } : {
+            grid: '#EEF0F8',
+            tick: '#6B7093',
+            tooltipBg: '#1D2140',
+            pointBorder: '#ffffff',
+            lineFill: 'rgba(84,87,229,0.10)',
+            doughnutBorder: '#ffffff'
+        };
+    }
+
+    function renderCharts() {
+        if (!document.getElementById('weeklyChart')) return; // page left via PJAX
+        const t = chartTheme();
+
+        if (window.__dpWeeklyChart) window.__dpWeeklyChart.destroy();
+        if (window.__dpSubjectChart) window.__dpSubjectChart.destroy();
+
+        window.__dpWeeklyChart = new Chart(document.getElementById('weeklyChart'), {
+            type: 'line',
+            data: {
+                labels: weeklyLabels,
+                datasets: [{
+                    data: weeklyValues,
+                    borderColor: '#5457E5',
+                    backgroundColor: t.lineFill,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#5457E5',
+                    pointBorderColor: t.pointBorder,
+                    pointBorderWidth: 2,
+                    borderWidth: 2.5,
+                }]
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#1D2140',
+                        backgroundColor: t.tooltipBg,
                         titleColor: '#fff',
                         bodyColor: '#fff',
                         padding: 12,
@@ -1000,37 +1045,41 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 scales: {
                     y: {
                         beginAtZero: true,
-                        grid: { color: '#EEF0F8' },
-                        ticks: { color: '#6B7093', font: { size: 11 } }
+                        grid: { color: t.grid },
+                        ticks: { color: t.tick, font: { size: 11 } }
                     },
                     x: {
                         grid: { display: false },
-                        ticks: { color: '#6B7093', font: { size: 11 } }
+                        ticks: { color: t.tick, font: { size: 11 } }
                     }
                 }
             }
         });
 
-    if (subjectLabels.length) {
-        new Chart(document.getElementById('subjectChart'), {
-            type: 'doughnut',
-            data: {
-                labels: subjectLabels,
-                datasets: [{
-                    data: subjectValues,
-                    backgroundColor: palette,
-                    borderColor: '#fff',
-                    borderWidth: 3,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '68%',
-                plugins: { legend: { display: false } }
-            }
-        });
+        if (subjectLabels.length) {
+            window.__dpSubjectChart = new Chart(document.getElementById('subjectChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: subjectLabels,
+                    datasets: [{
+                        data: subjectValues,
+                        backgroundColor: palette,
+                        borderColor: t.doughnutBorder,
+                        borderWidth: 3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '68%',
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
     }
+
+    renderCharts();
+    window.addEventListener('dp:themechange', renderCharts);
 </script>
 </body>    
 </html>
