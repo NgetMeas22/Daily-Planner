@@ -181,8 +181,10 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
     <title><?php echo htmlspecialchars(t('settings')); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
         body { background: #f8fafc; font-family: 'Inter', sans-serif; }
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
         .settings-tab { transition: all .15s ease; }

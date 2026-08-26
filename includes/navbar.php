@@ -56,10 +56,12 @@ $userInitial = strtoupper(substr($userName, 0, 1));
     else document.documentElement.removeAttribute('data-bs-theme');
   })();
 </script>
-<link rel="stylesheet" href="assets/theme.css?v=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css?v=2">
 
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap');
 
   .custom-navbar {
     background: rgba(63, 140, 255, 0.95);
@@ -376,40 +378,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
   @keyframes pageLoadingSpin {
     to { transform: rotate(360deg); }
   }
-  body[data-theme="dark"] {
-    background: #0b1120 !important;
-    color: #e2e8f0 !important;
-    color-scheme: dark;
-  }
-  body[data-theme="dark"].bg-light,
-  body[data-theme="dark"] .bg-light,
-  body[data-theme="dark"] .bg-white,
-  body[data-theme="dark"] .bg-gray-50,
-  body[data-theme="dark"] .bg-gray-100,
-  body[data-theme="dark"] .bg-slate-50,
-  body[data-theme="dark"] .bg-slate-100 {
-    background-color: #111827 !important;
-  }
-  body[data-theme="dark"] .text-gray-900,
-  body[data-theme="dark"] .text-gray-800,
-  body[data-theme="dark"] .text-gray-700,
-  body[data-theme="dark"] .text-slate-900,
-  body[data-theme="dark"] .text-slate-800,
-  body[data-theme="dark"] .text-slate-700 {
-    color: #e5eefb !important;
-  }
-  body[data-theme="dark"] .text-gray-600,
-  body[data-theme="dark"] .text-gray-500,
-  body[data-theme="dark"] .text-slate-600,
-  body[data-theme="dark"] .text-slate-500 {
-    color: #94a3b8 !important;
-  }
-  body[data-theme="dark"] .border-gray-100,
-  body[data-theme="dark"] .border-gray-200,
-  body[data-theme="dark"] .border-slate-100,
-  body[data-theme="dark"] .border-slate-200 {
-    border-color: #243047 !important;
-  }
+  /* Dark mode navbar overrides — all other dark styles live in assets/theme.css */
   body[data-theme="dark"] .custom-navbar {
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.96));
   }
@@ -436,77 +405,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
   body[data-theme="dark"] .custom-navbar .navbar-toggler-icon {
     filter: brightness(1.8);
   }
-  body[data-theme="dark"] .card,
-  body[data-theme="dark"] .soft-card,
-  body[data-theme="dark"] .modal-content,
-  body[data-theme="dark"] .dropdown-menu,
-  body[data-theme="dark"] .list-group-item,
-  body[data-theme="dark"] .table,
-  body[data-theme="dark"] .alert,
-  body[data-theme="dark"] .form-control,
-  body[data-theme="dark"] .form-select,
-  body[data-theme="dark"] .input-group-text {
-    background-color: #111827 !important;
-    color: #e2e8f0;
-    border-color: #334155;
-  }
-  body[data-theme="dark"] .text-muted,
-  body[data-theme="dark"] .small,
-  body[data-theme="dark"] .form-label,
-  body[data-theme="dark"] .section-title,
-  body[data-theme="dark"] .text-secondary {
-    color: #94a3b8 !important;
-  }
-  body[data-theme="dark"] .table thead th,
-  body[data-theme="dark"] .table > :not(caption) > * > * {
-    background-color: #111827;
-    color: #e2e8f0;
-  }
-  body[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > * {
-    background-color: #0f172a;
-    color: #e2e8f0;
-  }
-  body[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
-  body[data-theme="dark"] select,
-  body[data-theme="dark"] textarea {
-    background-color: #0f172a !important;
-    color: #e2e8f0 !important;
-    border-color: #334155 !important;
-  }
-  body[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"])::placeholder,
-  body[data-theme="dark"] textarea::placeholder {
-    color: #64748b;
-  }
-  body[data-theme="dark"] .border,
-  body[data-theme="dark"] .border-top,
-  body[data-theme="dark"] .border-bottom {
-    border-color: #334155 !important;
-  }
-  body[data-theme="dark"] .btn-outline-primary,
-  body[data-theme="dark"] .btn-outline-secondary,
-  body[data-theme="dark"] .btn-outline-info,
-  body[data-theme="dark"] .btn-outline-success,
-  body[data-theme="dark"] .btn-outline-danger {
-    color: #e2e8f0;
-    border-color: #475569;
-  }
-  body[data-theme="dark"] .btn-outline-primary:hover,
-  body[data-theme="dark"] .btn-outline-secondary:hover,
-  body[data-theme="dark"] .btn-outline-info:hover,
-  body[data-theme="dark"] .btn-outline-success:hover,
-  body[data-theme="dark"] .btn-outline-danger:hover {
-    color: #fff;
-  }
-  body[data-theme="dark"] .progress {
-    background-color: #1e293b;
-  }
-  body[data-theme="dark"] .table > :not(caption) > * > * {
-    border-bottom-color: #1f2937;
-  }
-  body[data-theme="dark"] .table thead th {
-    color: #cbd5e1;
-    border-bottom-color: #334155;
-  }
+
   @media (min-width: 992px) {
     .custom-navbar .navbar-collapse {
       display: flex !important;
