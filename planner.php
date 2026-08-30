@@ -718,7 +718,7 @@
                     <form method="get" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch align-items-sm-center">
                         <input type="hidden" name="date" value="<?php echo htmlspecialchars($selectedDate); ?>">
                         <select name="copy_from" class="form-select form-select-sm" style="min-width:180px;">
-                            <option value="">Choose a previous day</option>
+                            <option value="">Choose</option>
                             <?php foreach ($recentPlanDates as $dateKey): ?>
                                 <option value="<?php echo htmlspecialchars($dateKey); ?>" <?php echo $copyFromDate === $dateKey ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars(date('D, M j', strtotime($dateKey))); ?>

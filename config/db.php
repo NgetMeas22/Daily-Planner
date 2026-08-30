@@ -5,7 +5,13 @@ $user = 'root';
 $pass = '';
 $dbName = 'daily_planner';
 
-$conn = new mysqli($server, $user, $pass);
+// Use a persistent connection ("p:") so PHP can reuse an existing MySQL
+// connection across requests instead of paying the connect handshake cost on
+// every page load. This is a big win on shared hosts (e.g. InfinityFree) where
+// connection setup is comparatively slow. The rest of the app keeps using the
+// mysqli API, so nothing else needs to change.
+$persistentServer = 'p:' . $server;
+$conn = new mysqli($persistentServer, $user, $pass);
 
 if ($conn->connect_error) {
     die('Database connection failed.');

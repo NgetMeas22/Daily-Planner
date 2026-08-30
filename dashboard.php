@@ -143,109 +143,51 @@ $ringOffset = fn($pct) => (string) round(113 - 113 * $pct / 100, 1);
 $pctText = fn($pct) => $pct . '%';
 $overBudget = $expensesPct >= 100;
 
-// Fetch recent records
-$subjects = $conn->query("SELECT id, name, description FROM subjects WHERE user_id = {$userId} ORDER BY id DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$goals = $conn->query("SELECT id, goal_name, target_hours, progress, deadline FROM goals WHERE user_id = {$userId} ORDER BY id DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$expenses = $conn->query("SELECT id, title, category, amount, expense_date FROM expenses WHERE user_id = {$userId} ORDER BY id DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$plannerRows = $conn->query("
+// Fetch recent records (kept small with LIMIT 5 and now using prepared statements).
+// Only the lightweight stat-cards + recent lists render server-side; the heavier
+// chart aggregations are lazy-loaded from api/dashboard_charts.php via fetch().
+$stmt = $conn->prepare("SELECT id, name, description FROM subjects WHERE user_id = ? ORDER BY id DESC LIMIT 5");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$stmt = $conn->prepare("SELECT id, goal_name, target_hours, progress, deadline FROM goals WHERE user_id = ? ORDER BY id DESC LIMIT 5");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$goals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$stmt = $conn->prepare("SELECT id, title, category, amount, expense_date FROM expenses WHERE user_id = ? ORDER BY id DESC LIMIT 5");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$expenses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$stmt = $conn->prepare("
     SELECT p.id, p.study_date, p.start_time, p.end_time, p.topic, s.name AS subject_name
     FROM planner p INNER JOIN subjects s ON s.id = p.subject_id
-    WHERE p.user_id = {$userId} ORDER BY p.id DESC LIMIT 5
-")->fetch_all(MYSQLI_ASSOC);
-$allSubjects = $conn->query("SELECT id, name FROM subjects WHERE user_id = {$userId} ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+    WHERE p.user_id = ? ORDER BY p.id DESC LIMIT 5
+");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$plannerRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
 
-// ---- Study hours chart (dynamic range) ----
+$allSubjects = [];
+$stmt = $conn->prepare("SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC");
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$allSubjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+// Initial range only selects which range button is active and which range the
+// browser fetches from the chart endpoint. No server-side aggregation happens
+// here for the charts anymore.
 $studyRange = $_GET['range'] ?? 'week';
 if (!in_array($studyRange, ['day', 'week', 'month'], true)) {
     $studyRange = 'week';
 }
-
-$studyChart = [
-    'label' => 'This week',
-    'summary' => 'Current week',
-    'labels' => [],
-    'values' => [],
-    'totalHours' => 0,
-];
-
-if ($studyRange === 'day') {
-    $today = date('Y-m-d');
-    $dayRaw = $conn->query("
-        SELECT start_time, end_time, GREATEST(TIMESTAMPDIFF(MINUTE, start_time, end_time), 0) / 60 AS hours
-        FROM planner
-        WHERE user_id = {$userId} AND study_date = '{$today}'
-        AND end_time > start_time
-        ORDER BY start_time ASC
-    ")->fetch_all(MYSQLI_ASSOC);
-
-    foreach ($dayRaw as $row) {
-        $label = substr($row['start_time'], 0, 5) . ' - ' . substr($row['end_time'], 0, 5);
-        $studyChart['labels'][] = $label;
-        $studyChart['values'][] = round((float) $row['hours'], 1);
-        $studyChart['totalHours'] += (float) $row['hours'];
-    }
-
-    $studyChart['label'] = 'This day';
-    $studyChart['summary'] = date('D, j M');
-} elseif ($studyRange === 'month') {
-    $monthStart = date('Y-m-01');
-    $monthEnd = date('Y-m-t');
-    $monthRaw = $conn->query("
-        SELECT study_date, SUM(GREATEST(TIMESTAMPDIFF(MINUTE, start_time, end_time), 0)) / 60 AS hours
-        FROM planner
-        WHERE user_id = {$userId} AND study_date BETWEEN '{$monthStart}' AND '{$monthEnd}'
-        AND end_time > start_time
-        GROUP BY study_date
-        ORDER BY study_date ASC
-    ")->fetch_all(MYSQLI_ASSOC);
-
-    $firstDay = (int) date('j', strtotime($monthStart));
-    $lastDay = (int) date('j', strtotime($monthEnd));
-    $monthHours = [];
-    foreach ($monthRaw as $row) {
-        $monthHours[$row['study_date']] = round((float) $row['hours'], 1);
-        $studyChart['totalHours'] += (float) $row['hours'];
-    }
-    for ($day = $firstDay; $day <= $lastDay; $day++) {
-        $date = date('Y-m-') . str_pad((string) $day, 2, '0', STR_PAD_LEFT);
-        $studyChart['labels'][] = (string) $day;
-        $studyChart['values'][] = $monthHours[$date] ?? 0;
-    }
-
-    $studyChart['label'] = 'This month';
-    $studyChart['summary'] = date('F Y');
-} else {
-    $weekStart = date('Y-m-d', strtotime('monday this week'));
-    $weekEnd   = date('Y-m-d', strtotime('sunday this week'));
-    $weeklyRaw = $conn->query("
-        SELECT day_name, SUM(GREATEST(TIME_TO_SEC(TIMEDIFF(end_time, start_time)), 0)) / 3600 AS hours
-        FROM planner
-        WHERE user_id = {$userId} AND study_date BETWEEN '{$weekStart}' AND '{$weekEnd}'
-        AND end_time > start_time
-        GROUP BY day_name
-    ")->fetch_all(MYSQLI_ASSOC);
-
-    $dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    $weeklyHours = array_fill_keys($dayOrder, 0.0);
-    foreach ($weeklyRaw as $row) {
-        if (isset($weeklyHours[$row['day_name']])) {
-            $weeklyHours[$row['day_name']] = round((float) $row['hours'], 1);
-            $studyChart['totalHours'] += (float) $row['hours'];
-        }
-    }
-    $studyChart['labels'] = array_map(fn($d) => substr($d, 0, 3), $dayOrder);
-    $studyChart['values'] = array_values($weeklyHours);
-}
-
-// ---- Subject distribution ----
-$subjectDistRaw = $conn->query("
-    SELECT s.name, COUNT(*) AS c
-    FROM planner p INNER JOIN subjects s ON s.id = p.subject_id
-    WHERE p.user_id = {$userId}
-    GROUP BY s.name ORDER BY c DESC LIMIT 5
-")->fetch_all(MYSQLI_ASSOC);
-$subjectLabels = array_map(fn($r) => $r['name'], $subjectDistRaw);
-$subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 
 ?>
 <!DOCTYPE html>
@@ -255,6 +197,7 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/jpeg" href="uploads/avatars/avatar_3_1786083952.jpg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -570,7 +513,7 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
             border-radius: 999px;
             padding: 4px;
         }
-        .range-switch a {
+        .range-switch button {
             text-decoration: none;
             color: var(--ink-soft);
             font-size: .74rem;
@@ -578,9 +521,12 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
             padding: 6px 13px;
             border-radius: 999px;
             transition: var(--transition);
+            border: none;
+            background: transparent;
+            cursor: pointer;
         }
-        .range-switch a:hover { color: var(--ink); }
-        .range-switch a.active {
+        .range-switch button:hover { color: var(--ink); }
+        .range-switch button.active {
             background: var(--surface);
             color: var(--ink);
             box-shadow: 0 1px 4px rgba(0,0,0,.08);
@@ -879,25 +825,25 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
         </div>
     </div>
 
-    <!-- Charts -->
+    <!-- Charts (rendered after initial load via fetch() to api/dashboard_charts.php) -->
     <div class="row g-3 mb-4">
         <div class="col-lg-7 anim-up anim-up-5">
             <div class="panel">
                 <div class="panel-head">
                     <div>
-                        <h6 class="mb-1 fw-bold" style="letter-spacing:-.01em;"><?= htmlspecialchars($studyChart['label']) ?> Study Hours</h6>
-                        <small style="color:var(--ink-soft);"><?= htmlspecialchars($studyChart['summary']) ?></small>
+                        <h6 class="mb-1 fw-bold" style="letter-spacing:-.01em;"><span id="studyChartLabel">Study Hours</span></h6>
+                        <small style="color:var(--ink-soft);" id="studyChartSummary">&nbsp;</small>
                     </div>
-                    <div class="range-switch" aria-label="Study time range">
-                        <a href="?range=day" class="<?= $studyRange === 'day' ? 'active' : '' ?>">Day</a>
-                        <a href="?range=week" class="<?= $studyRange === 'week' ? 'active' : '' ?>">Week</a>
-                        <a href="?range=month" class="<?= $studyRange === 'month' ? 'active' : '' ?>">Month</a>
+                    <div class="range-switch" aria-label="Study time range" id="studyRangeSwitch">
+                        <button type="button" data-range="day" class="<?= $studyRange === 'day' ? 'active' : '' ?>">Day</button>
+                        <button type="button" data-range="week" class="<?= $studyRange === 'week' ? 'active' : '' ?>">Week</button>
+                        <button type="button" data-range="month" class="<?= $studyRange === 'month' ? 'active' : '' ?>">Month</button>
                     </div>
                 </div>
                 <div class="panel-body">
                     <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:.72rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">
                         <span>Total study time</span>
-                        <span style="color:var(--ink);font-weight:700;"><?= number_format(max(0, $studyChart['totalHours']), 1) ?>h</span>
+                        <span style="color:var(--ink);font-weight:700;" id="studyTotalHours">…</span>
                     </div>
                     <div class="chart-wrap"><canvas id="weeklyChart"></canvas></div>
                 </div>
@@ -909,22 +855,10 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                     <h6 class="mb-0 fw-semibold">Subject Distribution</h6>
                     <span class="count-pill">By sessions</span>
                 </div>
-                <div class="panel-body">
-                    <?php if ($subjectLabels): ?>
-                        <div class="chart-wrap" style="height:175px;"><canvas id="subjectChart"></canvas></div>
-                        <div class="d-flex flex-wrap gap-3 justify-content-center mt-3" style="font-size:.72rem;">
-                            <?php
-                            $palette = ['#6C5CE7', '#0984E3', '#E17055', '#FF6B6B', '#00B894'];
-                            foreach ($subjectLabels as $i => $lbl): ?>
-                                <span><span class="legend-dot" style="background:<?= $palette[$i % count($palette)] ?>;"></span><?= htmlspecialchars($lbl) ?></span>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php else: ?>
-                        <div class="empty-state">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
-                            <div>No planner sessions yet.<br>Add one to see the breakdown.</div>
-                        </div>
-                    <?php endif; ?>
+                <div class="panel-body" id="subjectDist">
+                    <div class="empty-state" id="subjectDistLoading">
+                        <div style="font-size:.82rem;color:var(--ink-soft);">Loading breakdown…</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1169,11 +1103,12 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 </div>
 
 <script>
-    const weeklyLabels = <?= json_encode($studyChart['labels']) ?>;
-    const weeklyValues = <?= json_encode($studyChart['values']) ?>.map(v => Math.max(0, v));
-    const subjectLabels = <?= json_encode($subjectLabels) ?>;
-    const subjectValues = <?= json_encode($subjectValues) ?>;
     const palette = ['#6C5CE7', '#0984E3', '#E17055', '#FF6B6B', '#00B894'];
+    const CHART_API = 'api/dashboard_charts.php';
+
+    // Chart data is fetched asynchronously after the page shell renders.
+    let dpChart = { study: { labels: [], values: [], totalHours: 0, label: '', summary: '' }, subject: { labels: [], values: [] } };
+    let dpChartRange = '<?= $studyRange ?>';
 
     function chartTheme() {
         const dark = document.body.getAttribute('data-theme') === 'dark';
@@ -1196,9 +1131,9 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
 
     let chartRetryCount = 0;
 
-    // Single, defensive entry point for chart rendering. Retries briefly if
-    // Chart.js hasn't finished loading yet (slow network / CDN hiccup),
-    // and fails visibly instead of leaving a silent blank canvas.
+    // Render the study-hours line chart and the subject distribution doughnut
+    // into their canvases from the latest fetched data. Idempotent-safe and
+    // guards against missing canvases after a soft navigation.
     function renderCharts() {
         const weeklyCanvas = document.getElementById('weeklyChart');
         if (!weeklyCanvas) return;
@@ -1226,9 +1161,9 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
             window.__dpWeeklyChart = new Chart(weeklyCanvas, {
                 type: 'line',
                 data: {
-                    labels: weeklyLabels,
+                    labels: dpChart.study.labels,
                     datasets: [{
-                        data: weeklyValues,
+                        data: dpChart.study.values,
                         borderColor: '#0984E3',
                         backgroundColor: t.lineFill,
                         fill: true,
@@ -1273,36 +1208,133 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 }
             });
 
-            const subjectCanvas = document.getElementById('subjectChart');
-            if (subjectCanvas && subjectLabels.length) {
-                window.__dpSubjectChart = new Chart(subjectCanvas, {
-                    type: 'doughnut',
-                    data: {
-                        labels: subjectLabels,
-                        datasets: [{
-                            data: subjectValues,
-                            backgroundColor: palette,
-                            borderColor: t.doughnutBorder,
-                            borderWidth: 3,
-                            hoverBorderWidth: 0,
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: '68%',
-                        animation: { animateRotate: true, duration: 800 },
-                        plugins: { legend: { display: false } }
-                    }
-                });
-            }
+            renderSubjectChart(t);
         } catch (err) {
             console.error('Dashboard chart render failed:', err);
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        renderCharts();
+    // Render the doughnut + legend, or an empty state, into #subjectDist.
+    function renderSubjectChart(t) {
+        const container = document.getElementById('subjectDist');
+        if (!container) return;
+
+        const labels = dpChart.subject.labels;
+        const values = dpChart.subject.values;
+
+        // Drop the loading / stale empty state.
+        container.querySelectorAll('#subjectDistLoading').forEach(function (n) { n.remove(); });
+        container.querySelectorAll('canvas, .legend-row').forEach(function (n) { n.remove(); });
+
+        if (!labels.length) {
+            container.insertAdjacentHTML('beforeend',
+                '<div class="empty-state">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>' +
+                '<div>No planner sessions yet.<br>Add one to see the breakdown.</div>' +
+                '</div>');
+            return;
+        }
+
+        t = t || chartTheme();
+        container.insertAdjacentHTML('beforeend',
+            '<div class="chart-wrap" style="height:175px;"><canvas id="subjectChart"></canvas></div>');
+
+        var legend = '<div class="d-flex flex-wrap gap-3 justify-content-center mt-3 legend-row" style="font-size:.72rem;">';
+        labels.forEach(function (lbl, i) {
+            legend += '<span><span class="legend-dot" style="background:' + palette[i % palette.length] + ';"></span>' +
+                escapeHtml(lbl) + '</span>';
+        });
+        legend += '</div>';
+        container.insertAdjacentHTML('beforeend', legend);
+
+        const subjectCanvas = document.getElementById('subjectChart');
+        if (!subjectCanvas) return;
+        window.__dpSubjectChart = new Chart(subjectCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: palette,
+                    borderColor: t.doughnutBorder,
+                    borderWidth: 3,
+                    hoverBorderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                animation: { animateRotate: true, duration: 800 },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Update the study-hours panel header + total from the fetched data.
+    function updateStudySummary() {
+        const labelEl = document.getElementById('studyChartLabel');
+        const summaryEl = document.getElementById('studyChartSummary');
+        const totalEl = document.getElementById('studyTotalHours');
+        if (labelEl) labelEl.textContent = dpChart.study.label + ' Study Hours';
+        if (summaryEl) summaryEl.textContent = dpChart.study.summary;
+        if (totalEl) totalEl.textContent = (Math.max(0, dpChart.study.totalHours)).toFixed(1) + 'h';
+    }
+
+    function setRangeActive(range) {
+        document.querySelectorAll('#studyRangeSwitch button').forEach(function (b) {
+            b.classList.toggle('active', b.getAttribute('data-range') === range);
+        });
+    }
+
+    // Fetch chart data for the given range without reloading the page.
+    function loadCharts(range) {
+        dpChartRange = range;
+        setRangeActive(range);
+        fetch(CHART_API + '?range=' + encodeURIComponent(range), {
+            headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+            .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+            .then(function (data) {
+                dpChart = data;
+                updateStudySummary();
+                renderCharts();
+            })
+            .catch(function () {
+                const totalEl = document.getElementById('studyTotalHours');
+                if (totalEl && totalEl.textContent === '…') totalEl.textContent = '—';
+                const container = document.getElementById('subjectDist');
+                if (container) {
+                    container.querySelectorAll('#subjectDistLoading').forEach(function (n) { n.remove(); });
+                    if (!container.querySelector('.empty-state')) {
+                        container.insertAdjacentHTML('beforeend',
+                            '<div class="empty-state">Charts could not load. Refresh to retry.</div>');
+                    }
+                }
+            });
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+        });
+    }
+
+    // Set up page behaviour. Guarded so it runs exactly once per script
+    // execution (works both on a full page load and on PJAX soft navigation).
+    let dashboardSetupRan = false;
+    function initDashboardCharts() {
+        if (dashboardSetupRan) return;
+        dashboardSetupRan = true;
+
+        const switchEl = document.getElementById('studyRangeSwitch');
+        if (switchEl) {
+            switchEl.addEventListener('click', function (e) {
+                const btn = e.target.closest('button[data-range]');
+                if (btn && !btn.classList.contains('active')) loadCharts(btn.getAttribute('data-range'));
+            });
+        }
 
         /* ---- Quick-add toggle ---- */
         document.querySelectorAll('.quick-add-toggle').forEach(function(btn) {
@@ -1349,8 +1381,16 @@ $subjectValues = array_map(fn($r) => (int) $r['c'], $subjectDistRaw);
                 }
             });
         });
-    });
 
+        loadCharts(dpChartRange);
+    }
+
+    document.addEventListener('DOMContentLoaded', initDashboardCharts);
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        initDashboardCharts();
+    }
+
+    // Re-render charts (from cached data) when the theme changes instantly.
     window.addEventListener('dp:themechange', renderCharts);
 </script>
 </body>
