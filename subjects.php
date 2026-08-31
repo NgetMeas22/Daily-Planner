@@ -17,10 +17,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_subject'])) {
         $stmt = $conn->prepare('INSERT INTO subjects (user_id, name, description) VALUES (?, ?, ?)');
         $stmt->bind_param('iss', $userId, $name, $description);
         $stmt->execute();
+        redirect('subjects.php');
     }
 }
 
-if (isset($_GET['delete'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_subject'])) {
+    $id = (int) ($_POST['subject_id'] ?? 0);
+    $name = trim($_POST['name'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+
+    if ($name === '') {
+        $errors[] = 'Subject name is required.';
+    } else {
+        $stmt = $conn->prepare('UPDATE subjects SET name = ?, description = ? WHERE id = ? AND user_id = ?');
+        $stmt->bind_param('ssii', $name, $description, $id, $userId);
+        $stmt->execute();
+        redirect('subjects.php');
+    }
+}
+
+$isPrefetch = (($_SERVER['HTTP_PURPOSE'] ?? '') === 'prefetch' || ($_SERVER['HTTP_SEC_PURPOSE'] ?? '') === 'prefetch');
+if (isset($_GET['delete']) && !$isPrefetch) {
     $id = (int) $_GET['delete'];
     $stmt = $conn->prepare('DELETE FROM subjects WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $id, $userId);
@@ -203,6 +220,22 @@ $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         }
         .btn-card-del:hover { border-color: #FF6B6B; color: #FF6B6B; background: #FF6B6B08; }
 
+        .btn-card-edit {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: .72rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--ink-soft);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: var(--transition);
+        }
+        .btn-card-edit:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
         /* Stats bar */
         .stats-bar {
             display: flex;
@@ -305,10 +338,15 @@ $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                                 <?= date('M d, Y', strtotime($subject['created_at'])) ?>
                             </span>
-                            <a class="btn-card-del" href="subjects.php?delete=<?= (int)$subject['id']; ?>" onclick="return confirm('Delete this subject?')">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                Delete
-                            </a>
+                            <span class="d-inline-flex align-items-center gap-2">
+                                <a class="btn-card-edit" href="#" onclick="openEditSubject(<?= (int)$subject['id']; ?>);return false;" title="Edit">
+                                    <i class="bi bi-pencil"></i> Edit
+                                </a>
+                                <a class="btn-card-del" href="subjects.php?delete=<?= (int)$subject['id']; ?>" onclick="return confirm('Delete this subject?')">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    Delete
+                                </a>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -322,6 +360,41 @@ $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <?php endif; ?>
 </div>
 
+<!-- EDIT SUBJECT MODAL -->
+<div id="editSubjectModal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content overflow-hidden" style="border-radius:var(--radius);">
+            <div class="modal-header" style="border-bottom:1px solid var(--border);padding:18px 24px;">
+                <div>
+                    <h5 class="modal-title fw-bold" style="font-size:1.05rem;color:var(--ink);"><i class="bi bi-pencil-square me-2" style="color:var(--accent);"></i>Edit Subject</h5>
+                    <p class="mb-0" style="font-size:.75rem;color:var(--ink-soft);">Update this subject's details.</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" id="editSubjectForm">
+                <input type="hidden" name="update_subject" value="1">
+                <input type="hidden" name="subject_id" id="edit_subject_id" value="">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Subject Name</label>
+                        <input class="form-control" name="name" id="edit_subject_name" placeholder="e.g. Mathematics" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Description</label>
+                        <input class="form-control" name="description" id="edit_subject_description" placeholder="Optional brief description">
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid var(--border);padding:14px 24px;background:var(--paper);">
+                    <button type="button" class="btn btn-sm fw-semibold" style="border:1px solid var(--border);color:var(--ink-soft);background:var(--surface);border-radius:var(--radius-sm);" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn-accent btn-sm"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 document.getElementById('formToggle').addEventListener('click', function() {
     var body = document.getElementById('formBody');
@@ -333,6 +406,28 @@ document.getElementById('formToggle').addEventListener('click', function() {
         if (first) setTimeout(function() { first.focus(); }, 150);
     }
 });
+
+const SUBJECT_DATA = <?php
+    $subjectById = [];
+    foreach ($subjects as $s) {
+        $subjectById[(int) $s['id']] = [
+            'id' => (int) $s['id'],
+            'name' => $s['name'] ?? '',
+            'description' => $s['description'] ?? '',
+        ];
+    }
+    echo json_encode($subjectById, JSON_UNESCAPED_UNICODE);
+?>;
+
+function openEditSubject(id) {
+    var s = SUBJECT_DATA[id];
+    if (!s) return;
+    document.getElementById('edit_subject_id').value = s.id;
+    document.getElementById('edit_subject_name').value = s.name;
+    document.getElementById('edit_subject_description').value = s.description;
+    new bootstrap.Modal(document.getElementById('editSubjectModal')).show();
+}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

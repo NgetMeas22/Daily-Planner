@@ -21,7 +21,7 @@ $conn->query("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
 $conn->select_db($dbName);
 $conn->set_charset('utf8mb4');
 
-const SCHEMA_VERSION = '6';
+const SCHEMA_VERSION = '7';
 
 $conn->query("CREATE TABLE IF NOT EXISTS meta (
     k VARCHAR(50) PRIMARY KEY,
@@ -230,6 +230,21 @@ if ($schemaVersion !== SCHEMA_VERSION) {
     if ($hasExpenseType && $hasExpenseType->num_rows === 0) {
         $conn->query("ALTER TABLE expenses ADD COLUMN type ENUM('expense','income') NOT NULL DEFAULT 'expense' AFTER amount");
     }
+
+    // Per-month budget bookkeeping so leftover money from the previous month can
+    // roll forward and be added to the current month's budget automatically.
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS budget_months (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            budget_month CHAR(7) NOT NULL,
+            base_budget DECIMAL(10,2) NOT NULL,
+            carry_in DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_budget_month_user (user_id, budget_month),
+            CONSTRAINT fk_budget_months_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
 
     // Record the version so future loads skip all the checks above.
     $metaKey = 'schema_version';

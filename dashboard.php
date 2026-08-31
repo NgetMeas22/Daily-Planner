@@ -137,6 +137,24 @@ $goalsPct = $counts['goals'] > 0 ? (int) round(($goalsDone / $counts['goals']) *
 
 $budget = (float) ($stats['budget'] ?? 0);
 $spentThisMonth = (float) ($stats['spent'] ?? 0);
+
+// Account for leftover money carried over from the previous month (matches the
+// expenses page's rollover): effective budget = base monthly budget + carry_in.
+$baseBudget = $budget;
+$nowMonth = date('Y-m');
+$bmStmt = $conn->prepare('SELECT base_budget, carry_in FROM budget_months WHERE user_id = ? AND budget_month = ?');
+$bmStmt->bind_param('is', $userId, $nowMonth);
+$bmStmt->execute();
+$bmRow = $bmStmt->get_result()->fetch_assoc();
+if ($bmRow) {
+    $budget = (float) $bmRow['base_budget'] + (float) $bmRow['carry_in'];
+} else {
+    // No tracked row yet — fall back to the user's base monthly budget.
+    $budget = $baseBudget;
+}
+if ($budget <= 0) {
+    $budget = $baseBudget;
+}
 $expensesPct = $budget > 0 ? (int) round(($spentThisMonth / $budget) * 100) : 0;
 
 $ringOffset = fn($pct) => (string) round(113 - 113 * $pct / 100, 1);

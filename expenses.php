@@ -10,6 +10,56 @@ $errors = [];
 // Conversion rate (1 USD = 4,050 KHR)
 $khrRate = 4050;
 
+// Per-month budget helper: returns [base_budget, carry_in] for a given 'YYYY-MM'
+// month, creating a row on first access so leftover money from the previous month
+// (base_budget + carry_in + income - expenses) is carried in automatically.
+function expense_budget_get($month, $baseBudget) {
+    global $conn, $userId;
+
+    $stmt = $conn->prepare('SELECT base_budget, carry_in FROM budget_months WHERE user_id = ? AND budget_month = ?');
+    $stmt->bind_param('is', $userId, $month);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if ($row) {
+        return [(float) $row['base_budget'], (float) $row['carry_in']];
+    }
+
+    // No row yet — create one, carrying in the leftover from the previous month (only
+    // when that month has its own tracked row, so we never recurse into arbitrary history).
+    $carryIn = 0.0;
+    $prevMonth = date('Y-m', strtotime($month . '-01 -1 month'));
+    $prevStmt = $conn->prepare('SELECT base_budget, carry_in FROM budget_months WHERE user_id = ? AND budget_month = ?');
+    $prevStmt->bind_param('is', $userId, $prevMonth);
+    $prevStmt->execute();
+    $prevRow = $prevStmt->get_result()->fetch_assoc();
+
+    if ($prevRow) {
+        $prevBase = (float) $prevRow['base_budget'];
+        $prevCarry = (float) $prevRow['carry_in'];
+        $ps = $prevMonth . '-01';
+        $pe = date('Y-m-t', strtotime($ps));
+        $ptStmt = $conn->prepare('SELECT type, COALESCE(SUM(amount),0) AS total FROM expenses WHERE user_id = ? AND expense_date BETWEEN ? AND ? GROUP BY type');
+        $ptStmt->bind_param('iss', $userId, $ps, $pe);
+        $ptStmt->execute();
+        $pIncome = 0.0;
+        $pExpense = 0.0;
+        foreach ($ptStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $pr) {
+            if ($pr['type'] === 'income') {
+                $pIncome = (float) $pr['total'];
+            } else {
+                $pExpense = (float) $pr['total'];
+            }
+        }
+        $carryIn = max(0, $prevCarry + $prevBase + $pIncome - $pExpense);
+    }
+
+    $ins = $conn->prepare('INSERT INTO budget_months (user_id, budget_month, base_budget, carry_in) VALUES (?, ?, ?, ?)');
+    $ins->bind_param('issd', $userId, $month, $baseBudget, $carryIn);
+    $ins->execute();
+
+    return [(float) $baseBudget, $carryIn];
+}
+
 // --- Auto-migrate: make sure the `type` column exists so we can tell
 // ចំណាយ (expense) rows apart from ចំណូល (income) rows in the same table. ---
 $colCheck = $conn->query("SHOW COLUMNS FROM expenses LIKE 'type'");
@@ -26,6 +76,11 @@ $selectedDate = $_GET['date'] ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate)) {
     $selectedDate = date('Y-m-d');
 }
+$selectedMonth = substr($selectedDate, 0, 7);
+$todayDate = date('Y-m-d');
+$selectedTs = strtotime($selectedDate);
+$prevDate = date('Y-m-d', strtotime('-1 day', $selectedTs));
+$nextDate = date('Y-m-d', strtotime('+1 day', $selectedTs));
 
 $success = '';
 
@@ -85,17 +140,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_budget'])) {
         $stmt = $conn->prepare('UPDATE users SET monthly_budget = ? WHERE id = ?');
         $stmt->bind_param('di', $newBudget, $userId);
         $stmt->execute();
+
+        // Apply the new budget to the month currently being viewed so the change
+        // shows up immediately. Keep the month's carried-in leftover untouched.
+        $monthlyBudget = $newBudget;
+        $viewMonth = substr($selectedDate, 0, 7);
+        $upd = $conn->prepare('INSERT INTO budget_months (user_id, budget_month, base_budget, carry_in)
+                               VALUES (?, ?, ?, 0.00)
+                               ON DUPLICATE KEY UPDATE base_budget = VALUES(base_budget)');
+        $upd->bind_param('isd', $userId, $viewMonth, $newBudget);
+        $upd->execute();
+
         redirect('expenses.php?date=' . urlencode($selectedDate));
     }
 }
 
 // Handle Delete (works for both expense and income rows)
-if (isset($_GET['delete'])) {
+$isPrefetch = (($_SERVER['HTTP_PURPOSE'] ?? '') === 'prefetch' || ($_SERVER['HTTP_SEC_PURPOSE'] ?? '') === 'prefetch');
+if (isset($_GET['delete']) && !$isPrefetch) {
     $id = (int) $_GET['delete'];
     $stmt = $conn->prepare('DELETE FROM expenses WHERE id = ? AND user_id = ?');
     $stmt->bind_param('ii', $id, $userId);
     $stmt->execute();
     redirect('expenses.php?date=' . urlencode($selectedDate));
+}
+
+// Handle Edit / Update (works for both expense and income rows)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_expense'])) {
+    $id = (int) ($_POST['entry_id'] ?? 0);
+    $title = trim($_POST['entry_title'] ?? '');
+    $amountUsd = (float) ($_POST['entry_amount_usd'] ?? 0);
+    $amountKhr = (float) ($_POST['entry_amount_khr'] ?? 0);
+    $entryDate = $_POST['entry_date'] ?? '';
+    $entryType = $_POST['entry_type'] ?? 'expense';
+    if (!in_array($entryType, ['expense', 'income'], true)) {
+        $entryType = 'expense';
+    }
+
+    // Convert KHR to USD when USD is empty.
+    if ($amountUsd <= 0 && $amountKhr > 0) {
+        $amountUsd = $amountKhr / $khrRate;
+    }
+
+    if ($id <= 0 || $title === '' || $amountUsd <= 0 || $entryDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $entryDate)) {
+        $errors[] = 'Title, a valid amount (USD or KHR), and date are required.';
+    } else {
+        $stmt = $conn->prepare('UPDATE expenses SET title = ?, amount = ?, expense_date = ?, type = ? WHERE id = ? AND user_id = ?');
+        $stmt->bind_param('sdssii', $title, $amountUsd, $entryDate, $entryType, $id, $userId);
+        $stmt->execute();
+        redirect('expenses.php?date=' . urlencode($entryDate));
+    }
 }
 
 // Fetch all entries (expense + income) for the selected date
@@ -152,7 +246,13 @@ foreach ($monthlyStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
     }
 }
 // Income tops up the budget instead of only expenses eating into it.
-$remaining = max(0, $monthlyBudget - $monthlyExpenseTotal + $monthlyIncomeTotal);
+// Leftover money from the previous month (budget_carryover) rolls into the current
+// month's budget automatically, so the effective budget = base + carried-in leftover.
+$nowMonth = date('Y-m');
+expense_budget_get($nowMonth, $monthlyBudget); // seed the current real month chain
+[$dispBase, $dispCarryIn] = expense_budget_get($selectedMonth, $monthlyBudget);
+$effectiveBudget = $dispBase + $dispCarryIn;
+$remaining = max(0, $effectiveBudget - $monthlyExpenseTotal + $monthlyIncomeTotal);
 
 // Group recent entries (last 90 days) by date for the Report Modal / Breakdown Card
 $reportStart = date('Y-m-d', strtotime('-90 days'));
@@ -256,6 +356,19 @@ $incomeKhr = $incomeUsd * $khrRate;
             height: 1px;
             background: var(--border);
         }
+
+        /* ---- Date Nav ---- */
+        .date-nav-btn {
+            width: 36px; height: 36px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--ink-soft);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+        .date-nav-btn:hover { background: var(--paper); color: var(--ink); border-color: var(--ink-soft); }
 
         /* ---- Stat Cards ---- */
         .stat-card {
@@ -454,6 +567,22 @@ $incomeKhr = $incomeUsd * $khrRate;
         }
         .btn-entry-delete:hover { border-color: var(--c-expenses); color: var(--c-expenses); background: rgba(255,107,107,.05); }
 
+        .btn-entry-edit {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: .72rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--ink-soft);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: var(--transition);
+        }
+        .btn-entry-edit:hover { border-color: var(--c-income); color: var(--c-income); background: rgba(0,184,148,.05); }
+
         table tbody tr { transition: background var(--transition); }
         table tbody tr:hover { background: rgba(245,247,250,.6); }
         body[data-theme="dark"] table tbody tr:hover { background: rgba(255,255,255,.03); }
@@ -542,7 +671,8 @@ $incomeKhr = $incomeUsd * $khrRate;
             color: var(--ink-soft);
             border-color: var(--border);
         }
-        body[data-theme="dark"] .btn-entry-delete {
+        body[data-theme="dark"] .btn-entry-delete,
+        body[data-theme="dark"] .btn-entry-edit {
             background: var(--surface);
             border-color: var(--border);
         }
@@ -569,9 +699,24 @@ $incomeKhr = $incomeUsd * $khrRate;
             <span style="background:rgba(255,255,255,.1);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:8px 18px;font-size:.82rem;font-weight:600;color:#fff;">
                 <i class="bi bi-receipt me-1"></i><?php echo count($dateItems); ?> items
             </span>
-            <form method="get" class="d-flex align-items-center gap-2">
-                <input type="date" class="form-control form-control-sm" name="date" value="<?php echo htmlspecialchars($selectedDate); ?>" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:6px 14px;font-size:.8rem;">
-                <button type="submit" class="btn btn-sm" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:999px;font-weight:600;font-size:.8rem;padding:6px 16px;">View</button>
+            <form method="get" class="d-flex align-items-center gap-2 flex-wrap" style="z-index:2;position:relative;">
+                <div class="d-flex align-items-center gap-1">
+                    <a href="expenses.php?date=<?php echo urlencode($prevDate); ?>" title="Previous day" class="date-nav-btn" style="border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                    <input type="date" class="form-control form-control-sm" name="date" value="<?php echo htmlspecialchars($selectedDate); ?>" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:6px 14px;font-size:.8rem;width:auto;">
+                    <a href="expenses.php?date=<?php echo urlencode($nextDate); ?>" title="Next day" class="date-nav-btn" style="border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </div>
+                <button type="submit" class="btn btn-sm" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:999px;font-weight:600;font-size:.8rem;padding:6px 16px;">
+                    <i class="bi bi-eye me-1"></i>View
+                </button>
+                <?php if ($selectedDate !== $todayDate): ?>
+                    <a href="expenses.php" class="btn btn-sm fw-semibold" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:999px;font-weight:600;font-size:.8rem;padding:6px 16px;">
+                        <i class="bi bi-calendar-day me-1"></i>Today
+                    </a>
+                <?php endif; ?>
             </form>
         </div>
     </div>
@@ -638,7 +783,11 @@ $incomeKhr = $incomeUsd * $khrRate;
                         </button>
                     </div>
                     <div class="stat-value" style="color:#00B894;">$<?php echo number_format($remaining, 2); ?></div>
-                    <p class="stat-sub">Budget $<?php echo number_format($monthlyBudget, 2); ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?></p>
+                    <?php if ($dispCarryIn > 0): ?>
+                        <p class="stat-sub">Budget $<?php echo number_format($dispBase, 2); ?> <span style="color:#00B894;">+ $<?php echo number_format($dispCarryIn, 2); ?> carried</span> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?></p>
+                    <?php else: ?>
+                        <p class="stat-sub">Budget $<?php echo number_format($effectiveBudget, 2); ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?></p>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -652,7 +801,7 @@ $incomeKhr = $incomeUsd * $khrRate;
         </div>
         <div class="add-form-wrap" id="budgetFormWrap">
         <div class="add-form-body" id="budgetFormBody">
-            <p class="small mb-3" style="color:var(--ink-soft);">Set your own spending limit for each month. Income you log tops this back up.</p>
+            <p class="small mb-3" style="color:var(--ink-soft);">Set a monthly limit. Income tops it up; remaining funds roll over.</p>
             <form method="post" class="d-flex flex-wrap align-items-end gap-3">
                 <input type="hidden" name="save_budget" value="1">
                 <div class="flex-grow-1" style="min-width:180px;">
@@ -744,7 +893,7 @@ $incomeKhr = $incomeUsd * $khrRate;
                 <h6 class="mb-0 fw-bold"><i class="bi bi-receipt-cutoff me-1" style="color:var(--c-expenses);"></i> Expenses for <?php echo htmlspecialchars($selectedDate); ?></h6>
                 <small style="color:var(--ink-soft);">Track daily expenses &amp; income in USD and KHR</small>
             </div>
-            <span class="item-count-badge"><?php echo count($dateItems); ?> items</span>
+            <span class="item-count-badge"><?php echo count($dateItems); ?>items</span>
         </div>
 
         <!-- Mobile View -->
@@ -776,7 +925,10 @@ $incomeKhr = $incomeUsd * $khrRate;
                                 <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $sign; ?><?php echo number_format($amountKhr); ?> ៛</div>
                             </div>
                         </div>
-                        <div class="d-flex justify-content-end mt-2 pt-2" style="border-top:1px solid var(--border);">
+                        <div class="d-flex justify-content-end gap-2 mt-2 pt-2" style="border-top:1px solid var(--border);">
+                            <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;">
+                                <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
+                            </a>
                             <a class="btn-entry-delete"
                                href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
                                onclick="return confirm('Delete this entry?')">
@@ -824,11 +976,16 @@ $incomeKhr = $incomeUsd * $khrRate;
                                 <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $sign; ?><?php echo number_format($amountKhr); ?> ៛</div>
                             </td>
                             <td class="px-4 py-3 text-end align-middle">
-                                <a class="btn-entry-delete"
-                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
-                                   onclick="return confirm('Delete this entry?')">
-                                    <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
-                                </a>
+                                <div class="d-inline-flex align-items-center gap-2">
+                                    <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;">
+                                        <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
+                                    </a>
+                                    <a class="btn-entry-delete"
+                                       href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
+                                       onclick="return confirm('Delete this entry?')">
+                                        <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -862,6 +1019,56 @@ $incomeKhr = $incomeUsd * $khrRate;
         <?php endif; ?>
     </div>
 
+</div>
+
+<!-- EDIT ENTRY MODAL -->
+<div id="editEntryModal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content overflow-hidden" style="border-radius:var(--radius);">
+            <div class="modal-header" style="border-bottom:1px solid var(--border);padding:18px 24px;">
+                <div>
+                    <h5 class="modal-title fw-bold" style="font-size:1.05rem;color:var(--ink);"><i class="bi bi-pencil-square me-2" style="color:var(--c-expenses);"></i>Edit Entry</h5>
+                    <p class="mb-0" style="font-size:.75rem;color:var(--ink-soft);">Update this expense or income entry.</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" id="editEntryForm">
+                <input type="hidden" name="update_expense" value="1">
+                <input type="hidden" name="entry_id" id="entry_id" value="">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Title / Item Name</label>
+                            <input class="form-control" id="entry_title" name="entry_title" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Amount (USD $)</label>
+                            <input class="form-control" id="entry_amount_usd" type="number" step="0.01" name="entry_amount_usd" placeholder="0.00" oninput="syncFromUsd('entry_amount_usd','entry_amount_khr')">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Amount (KHR ៛)</label>
+                            <input class="form-control" id="entry_amount_khr" type="number" step="100" name="entry_amount_khr" placeholder="0" oninput="syncFromKhr('entry_amount_usd','entry_amount_khr')">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Date</label>
+                            <input class="form-control" id="entry_date" type="date" name="entry_date" required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Type</label>
+                            <select class="form-select" id="entry_type" name="entry_type">
+                                <option value="expense">Expense · ចំណាយ</option>
+                                <option value="income">Income · ចំណូល</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid var(--border);padding:14px 24px;background:var(--paper);">
+                    <button type="button" class="btn-cancel" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Cancel</button>
+                    <button type="submit" class="btn-accent"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- REPORT MODAL -->
@@ -963,6 +1170,32 @@ $incomeKhr = $incomeUsd * $khrRate;
     // page; a plain popup window doesn't inherit them, which is why the
     // downloaded report used to render with no borders/colors at all.
     const REPORT_DATA = <?php echo json_encode($reportByDate, JSON_UNESCAPED_UNICODE); ?>;
+    const ENTRY_DATA = <?php
+        $entryById = [];
+        foreach ($dateItems as $e) {
+            $entryById[(int) $e['id']] = [
+                'id' => (int) $e['id'],
+                'title' => $e['title'] ?? '',
+                'amount' => (float) $e['amount'],
+                'expense_date' => $e['expense_date'] ?? '',
+                'type' => $e['type'] ?? 'expense',
+            ];
+        }
+        echo json_encode($entryById, JSON_UNESCAPED_UNICODE);
+    ?>;
+
+    /* ---- Edit Entry Modal ---- */
+    function openEditEntry(id) {
+        var e = ENTRY_DATA[id];
+        if (!e) return;
+        document.getElementById('entry_id').value = e.id;
+        document.getElementById('entry_title').value = e.title;
+        document.getElementById('entry_amount_usd').value = e.amount;
+        document.getElementById('entry_amount_khr').value = Math.round(e.amount * KHR_RATE);
+        document.getElementById('entry_date').value = e.expense_date;
+        document.getElementById('entry_type').value = e.type;
+        new bootstrap.Modal(document.getElementById('editEntryModal')).show();
+    }
 
     function syncFromUsd(usdId, khrId) {
         const usdInput = document.getElementById(usdId).value;

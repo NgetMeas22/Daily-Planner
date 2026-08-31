@@ -66,10 +66,42 @@
             $stmt->execute();
             redirect('planner.php?date=' . urlencode($selectedDate));
         }
+
+        // Action 3: Update (Edit) a planner task
+        if ($action === 'update_planner') {
+            $id = (int) ($_POST['planner_id'] ?? 0);
+            $subjectId = (int) ($_POST['subject_id'] ?? 0);
+            $startTime = trim($_POST['start_time'] ?? '');
+            $endTime = trim($_POST['end_time'] ?? '');
+            $studyDate = $_POST['study_date'] ?? $selectedDate;
+            $dayName = trim($_POST['day_name'] ?? '');
+            $topic = trim($_POST['topic'] ?? '');
+            $goal = trim($_POST['goal'] ?? '');
+            $result = trim($_POST['result'] ?? '');
+            $progress = (int) ($_POST['progress'] ?? 0);
+            $progress = max(0, min(100, $progress));
+            $status = $_POST['status'] ?? 'Pending';
+            if (!in_array($status, ['Pending', 'In Progress', 'Completed'], true)) {
+                $status = 'Pending';
+            }
+
+            $studyDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $studyDate) ? $studyDate : $selectedDate;
+
+            if ($subjectId <= 0 || $startTime === '' || $endTime === '') {
+                // Reset to a safe "no progress" state if times are invalid.
+                redirect('planner.php?date=' . urlencode($selectedDate));
+            } else {
+                $stmt = $conn->prepare('UPDATE planner SET subject_id = ?, start_time = ?, end_time = ?, study_date = ?, day_name = ?, topic = ?, goal = ?, result = ?, progress = ?, status = ? WHERE id = ? AND user_id = ?');
+                $stmt->bind_param('isssssssissi', $subjectId, $startTime, $endTime, $studyDate, $dayName, $topic, $goal, $result, $progress, $status, $id, $userId);
+                $stmt->execute();
+                redirect('planner.php?date=' . urlencode($studyDate));
+            }
+        }
     }
 
     // --- DELETE HANDLER ---
-    if (isset($_GET['delete'])) {
+    $isPrefetch = (($_SERVER['HTTP_PURPOSE'] ?? '') === 'prefetch' || ($_SERVER['HTTP_SEC_PURPOSE'] ?? '') === 'prefetch');
+    if (isset($_GET['delete']) && !$isPrefetch) {
         $id = (int) $_GET['delete'];
         $stmt = $conn->prepare('DELETE FROM planner WHERE id = ? AND user_id = ?');
         $stmt->bind_param('ii', $id, $userId);
@@ -86,7 +118,7 @@
 
     // Fetch Today's Tasks
     $dayRowsStmt = $conn->prepare("
-        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, s.name AS subject_name
+        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, p.subject_id, p.topic, p.goal, p.result, s.name AS subject_name
         FROM planner p
         INNER JOIN subjects s ON s.id = p.subject_id
         WHERE p.user_id = ? AND p.study_date = ?
@@ -833,11 +865,16 @@
                             <?php echo htmlspecialchars($formattedStart . ' - ' . $formattedEnd); ?>
                         </div>
                     </div>
-                    <a class="task-delete flex-shrink-0"
-                       href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
-                       onclick="return confirm('Delete this task?')">
-                        <i class="bi bi-trash3"></i>
-                    </a>
+                    <div class="d-flex flex-column gap-1 flex-shrink-0 align-items-end">
+                        <a class="task-delete" href="#" onclick="openEditTask(<?php echo (int)$row['id']; ?>);return false;" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <a class="task-delete"
+                           href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
+                           onclick="return confirm('Delete this task?')">
+                            <i class="bi bi-trash3"></i>
+                        </a>
+                    </div>
                 </div>
             <?php endforeach; ?>
 
@@ -871,11 +908,16 @@
                     <div class="flex-grow-1 min-w-0">
                         <span class="task-subject"><?php echo htmlspecialchars($row['subject_name']); ?></span>
                     </div>
-                    <a class="task-delete flex-shrink-0"
-                       href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
-                       onclick="return confirm('Delete this task?')">
-                        <i class="bi bi-trash3"></i> Delete
-                    </a>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <a class="task-delete" href="#" onclick="openEditTask(<?php echo (int)$row['id']; ?>);return false;" title="Edit">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                        <a class="task-delete"
+                           href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
+                           onclick="return confirm('Delete this task?')">
+                            <i class="bi bi-trash3"></i> Delete
+                        </a>
+                    </div>
                 </div>
             <?php endforeach; ?>
 
@@ -904,6 +946,88 @@
         </div>
     </div>
 
+</div>
+
+<!-- EDIT TASK MODAL -->
+<div class="modal fade" id="editTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content overflow-hidden" style="border-radius:var(--radius);">
+            <div class="modal-header" style="border-bottom:1px solid var(--border);padding:18px 24px;">
+                <div>
+                    <h5 class="modal-title fw-bold" style="font-size:1.05rem;color:var(--ink);"><i class="bi bi-pencil-square me-2" style="color:var(--accent);"></i>Edit Task</h5>
+                    <p class="mb-0" style="font-size:.75rem;color:var(--ink-soft);">Update the details of this planned task.</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" id="editTaskForm">
+                <input type="hidden" name="action" value="update_planner">
+                <input type="hidden" name="planner_id" id="edit_planner_id" value="">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Subject</label>
+                            <select class="form-select" name="subject_id" id="edit_subject_id" required>
+                                <option value="">Choose a subject</option>
+                                <?php foreach ($subjects as $subject): ?>
+                                    <option value="<?php echo (int)$subject['id']; ?>"><?php echo htmlspecialchars($subject['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Start Time</label>
+                            <input class="form-control" type="time" name="start_time" id="edit_start_time" required>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">End Time</label>
+                            <input class="form-control" type="time" name="end_time" id="edit_end_time" required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Date</label>
+                            <input class="form-control" type="date" name="study_date" id="edit_study_date" required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Day</label>
+                            <select class="form-select" name="day_name" id="edit_day_name" required>
+                                <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day): ?>
+                                    <option value="<?php echo $day; ?>"><?php echo $day; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Topic</label>
+                            <input class="form-control" name="topic" id="edit_topic" placeholder="e.g. Chapter 3" maxlength="255">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Goal</label>
+                            <input class="form-control" name="goal" id="edit_goal" placeholder="e.g. Finish exercises">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Progress (%)</label>
+                            <input class="form-control" type="number" min="0" max="100" name="progress" id="edit_progress" value="0">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Status</label>
+                            <select class="form-select" name="status" id="edit_status">
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold" style="color:var(--ink-soft);">Result / Notes</label>
+                            <textarea class="form-control" name="result" id="edit_result" rows="2" placeholder="What did you achieve?"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid var(--border);padding:14px 24px;background:var(--paper);">
+                    <button type="button" class="btn btn-sm fw-semibold" style="border:1px solid var(--border);color:var(--ink-soft);background:var(--surface);border-radius:var(--radius-sm);" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-accent btn-sm"><i class="bi bi-check-lg me-1"></i>Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- REPORT SUMMARY MODAL -->
@@ -1036,6 +1160,43 @@
     const PLANNER_TOTAL_ALL = <?php echo (int) $allHistoryTotal; ?>;
     const PLANNER_DONE_ALL = <?php echo (int) $allHistoryDone; ?>;
     const PLANNER_REPORT_DATA = <?php echo json_encode($historyByDate, JSON_UNESCAPED_UNICODE); ?>;
+    const PLANNER_TASKS = <?php
+        $taskById = [];
+        foreach ($dayRows as $r) {
+            $taskById[(int) $r['id']] = [
+                'id' => (int) $r['id'],
+                'subject_id' => (int) $r['subject_id'],
+                'start_time' => $r['start_time'] ?? '',
+                'end_time' => $r['end_time'] ?? '',
+                'study_date' => $r['study_date'] ?? '',
+                'day_name' => $r['day_name'] ?? '',
+                'topic' => $r['topic'] ?? '',
+                'goal' => $r['goal'] ?? '',
+                'result' => $r['result'] ?? '',
+                'progress' => (int) $r['progress'],
+                'status' => $r['status'] ?? 'Pending',
+            ];
+        }
+        echo json_encode($taskById, JSON_UNESCAPED_UNICODE);
+    ?>;
+
+    /* ---- Edit Task Modal ---- */
+    function openEditTask(id) {
+        var t = PLANNER_TASKS[id];
+        if (!t) return;
+        document.getElementById('edit_planner_id').value = t.id;
+        document.getElementById('edit_subject_id').value = t.subject_id;
+        document.getElementById('edit_start_time').value = t.start_time;
+        document.getElementById('edit_end_time').value = t.end_time;
+        document.getElementById('edit_study_date').value = t.study_date;
+        document.getElementById('edit_day_name').value = t.day_name;
+        document.getElementById('edit_topic').value = t.topic;
+        document.getElementById('edit_goal').value = t.goal;
+        document.getElementById('edit_progress').value = t.progress;
+        document.getElementById('edit_status').value = t.status;
+        document.getElementById('edit_result').value = t.result;
+        new bootstrap.Modal(document.getElementById('editTaskModal')).show();
+    }
 
     /* ---- Form Toggle ---- */
     document.getElementById('addFormToggle').addEventListener('click', function() {

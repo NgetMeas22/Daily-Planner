@@ -702,13 +702,19 @@ $userInitial = strtoupper(substr($userName, 0, 1));
       l.href = href;
       document.head.appendChild(l);
     }
+    function isDestructiveLink(a) {
+      if (!a) return true;
+      if (a.hasAttribute('onclick')) return true; // confirm()/handler links (e.g. Delete) must not be prefetched
+      var href = a.getAttribute('href') || '';
+      return /[?&]delete/.test(href); // never prefetch delete actions (server would process the GET)
+    }
     document.addEventListener('pointerenter', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('a[href$=".php"], a[href*=".php?"]') : null;
-      if (a) prefetch(a.href);
+      if (a && !isDestructiveLink(a)) prefetch(a.href);
     }, { capture: true, passive: true });
     document.addEventListener('touchstart', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('a[href$=".php"], a[href*=".php?"]') : null;
-      if (a) prefetch(a.href);
+      if (a && !isDestructiveLink(a)) prefetch(a.href);
     }, { capture: true, passive: true });
     if ('requestIdleCallback' in window) {
       requestIdleCallback(function () {
@@ -784,8 +790,10 @@ $userInitial = strtoupper(substr($userName, 0, 1));
       if (!a || a.target === '_blank' || a.hasAttribute('download')) return false;
       if (a.hasAttribute('onclick')) return false; // let confirm() handlers work
       if (a.dataset && a.dataset.bsToggle === 'modal') return false;
+      if (a.hasAttribute('data-no-pjax')) return false;
       var href = a.getAttribute('href');
       if (!href || href.charAt(0) === '#') return false;
+      if (/(\?|&)delete/.test(href)) return false; // destructive actions: always native nav so confirm() gates the request
       var url;
       try { url = new URL(a.href, location.href); } catch (e) { return false; }
       if (url.origin !== location.origin) return false;
