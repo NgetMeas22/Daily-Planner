@@ -234,19 +234,10 @@
     $aggStmt->close();
     $allHistoryTotal = (int) ($aggRow['total'] ?? 0);
     $allHistoryDone = (int) ($aggRow['done'] ?? 0);
-    ?>
-<!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLang); ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Planner & History</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
+    require_once __DIR__ . '/includes/layout.php';
+
+$pageExtraHead = <<<'EOD'
+<style>
         :root {
             --paper: #F5F7FA;
             --surface: #FFFFFF;
@@ -651,10 +642,10 @@
             .stat-value { font-size: 1.7rem; }
         }
     </style>
-</head>
-<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
+EOD;
 
-<?php $activePage = 'planner'; include __DIR__ . '/includes/navbar.php'; ?>
+layout_header('Daily Planner', 'planner', $pageExtraHead);
+?>
 
 <div class="container py-4 py-md-5" style="max-width: 1200px;">
 
@@ -1436,5 +1427,4 @@
         popup.document.close();
     }
 </script>
-</body>
-</html>
+<?php layout_footer(); ?>

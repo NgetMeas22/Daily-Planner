@@ -39,7 +39,9 @@ daily_planner/
 ├── includes/
 │   ├── auth.php            # session_start, redirect(), is_logged_in(), require_login()
 │   ├── i18n.php            # language switching (en/kh) + t('key') helper
-│   ├── navbar.php          # global navbar: avatar upload (stored in DB), language pill, Settings link, logout confirm, active-page highlight
+│   ├── navbar.php          # global navbar: avatar upload (stored in DB), language pill, Settings link, logout link (data-dp-confirm modal), active-page highlight
+│   ├── sidebar.php         # global icon-rail navigation (Dashboard/Planner/Notes/Subjects/Goals/Expenses + Settings/Profile/Logout)
+│   ├── layout.php          # page shell: layout_header()/layout_footer() wrap sidebar + navbar + content, renders the shared #dpConfirmModal
 │   ├── header.php          # EMPTY (unused)
 │   └── footer.php          # EMPTY (unused)
 ├── index.php               # Login page (real auth lives here)
@@ -163,7 +165,7 @@ All FKs are `ON DELETE CASCADE` — deleting a user removes their data everywher
 - When a subject is deleted, its planner rows are cascade-deleted (FK). Dashboard's `delete_subject` binds only `id` (subjects are unique per user by FK), others bind `id + user_id`.
 - `planner.php` copies prior-day templates client-visible via `?copy_from=YYYY-MM-DD`; the copy only pre-fills the form, it does not duplicate rows until saved.
 - Profile images uploaded before this change used a file path in `users.avatar` + `uploads/avatars/`. New uploads store a base64 data URI in `users.avatar_data` and null out `avatar` — keep the fallback chain (`avatar_data` then `avatar`) when displaying.
-- The navbar logout link uses `onclick="return confirm(...)"` — the confirm text is hardcoded English (not in i18n). If you translate it, add keys to `includes/i18n.php`.
+- Logout confirmation uses the **shared `#dpConfirmModal` Bootstrap modal** (rendered by `layout_footer()` in `includes/layout.php`, wired in `assets/js/script.js` → `initConfirmModal()`), not the native browser `confirm()`. Trigger it declaratively with `data-dp-confirm="Title|Message|Accept label"`; the JS intercepts the click, shows the modal and navigates to the link's `href` when accepted. Both logout links (`includes/sidebar.php` and `includes/navbar.php`) use it, and the strings live in `includes/i18n.php` (`logout_confirm_title`, `logout_confirm_message`, `stay_signed_in`) in both `en` and `kh`.
 - Expenses' four stat cards use the shared `.exp-stat` / `.exp-accent` / `.exp-label` / `.exp-value` / `.exp-sub` CSS classes defined in `expenses.php`'s `<style>` block. Keep them consistent if you restyle.
 
 ## 10. Running / testing locally

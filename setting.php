@@ -6,8 +6,10 @@ $currentLang = $_SESSION['lang'] ?? 'en';
 $userId = (int) $_SESSION['user_id'];
 $errors = [];
 
-function csrf_valid(): bool {
-    return isset($_POST['csrf_token']) && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
+if (!function_exists('csrf_valid')) {
+    function csrf_valid(): bool {
+        return isset($_POST['csrf_token']) && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
+    }
 }
 
 $csrfToken = $_SESSION['csrf_token'];
@@ -172,40 +174,51 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
     </a>
     <?php
 }
-?>
-<!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLang); ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars(t('settings')); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        body { background: #f8fafc; font-family: 'Inter', sans-serif; }
+require_once __DIR__ . '/includes/layout.php';
+
+$pageExtraHead = <<<'EOD'
+<style>
+        body { background: var(--dp-bg) !important; color: var(--dp-text) !important; font-family: 'Inter', sans-serif; }
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
-        .settings-tab { transition: all .15s ease; }
+        .settings-tab { transition: all .15s ease; color: var(--dp-text-muted); }
+        .settings-tab.active { background: var(--dp-primary) !important; color: #ffffff !important; }
+        .card {
+            background: var(--dp-surface) !important;
+            border: 1px solid var(--dp-border) !important;
+            color: var(--dp-text) !important;
+        }
+        .setting-appearance-card {
+            background: var(--dp-surface-2, #181d28) !important;
+            border: 1px solid var(--dp-border) !important;
+        }
+        .form-control, .form-select {
+            background: var(--dp-surface-2, #181d28) !important;
+            color: var(--dp-text) !important;
+            border-color: var(--dp-border) !important;
+        }
+        .form-control:focus, .form-select:focus {
+            background: var(--dp-surface-2, #181d28) !important;
+            color: var(--dp-text) !important;
+            border-color: var(--dp-primary) !important;
+        }
         .avatar-xl {
             width: 110px; height: 110px;
             border-radius: 50%;
             object-fit: cover;
-            background: #e2e8f0;
+            background: var(--dp-elevated);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 2.4rem;
             font-weight: 800;
-            color: #2563eb;
+            color: var(--dp-primary);
             position: relative;
         }
         .avatar-edit-overlay {
             position: absolute;
             inset: auto 0 0 0;
             height: 34px;
-            background: rgba(15, 23, 42, .55);
+            background: rgba(15, 23, 42, .65);
             color: #fff;
             border-radius: 0 0 999px 999px;
             display: flex;
@@ -216,9 +229,10 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
         }
         .avatar-edit-wrap:hover .avatar-edit-overlay { background: rgba(37, 99, 235, .75); }
     </style>
-</head>
-<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
-<?php $activePage = 'settings'; include __DIR__ . '/includes/navbar.php'; ?>
+EOD;
+
+layout_header('Settings', 'settings', $pageExtraHead);
+?>
 
 <div class="container py-4 py-md-5" style="max-width: 780px;">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
@@ -331,20 +345,110 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                     <input type="hidden" name="save_settings" value="1">
 
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div>
-                                <h6 class="mb-1 fw-semibold text-dark"><?php echo htmlspecialchars(t('appearance')); ?></h6>
-                                <p class="text-muted small mb-0">Choose how the interface looks across the app.</p>
+                    <!-- Appearance Settings (Pic 2 Design Match) -->
+                    <div class="setting-appearance-card mb-4">
+                        <!-- Theme Mode -->
+                        <div class="setting-row mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="setting-label fw-bold">Theme Mode</label>
+                                <span class="setting-mode-badge" id="currentThemeBadge"><?= ucfirst($settings['theme_mode'] ?? 'light') ?> Mode</span>
                             </div>
-                            <span class="badge text-bg-secondary"><?php echo htmlspecialchars(ucfirst($settings['theme_mode'] ?? 'light')); ?></span>
-                        </div>
-                        <div class="btn-group w-100 theme-option" role="group" aria-label="Theme selection">
-                            <input type="radio" class="btn-check" name="theme_mode" id="themeLight" value="light" <?= ($settings['theme_mode'] ?? 'light') === 'light' ? 'checked' : '' ?>>
-                            <label class="btn btn-outline-secondary" for="themeLight"><i class="bi bi-sun me-1"></i><?php echo htmlspecialchars(t('light_mode')); ?></label>
+                            <div class="setting-segmented-switch" role="group" aria-label="Theme Mode Selection">
+                                <input type="radio" class="btn-check" name="theme_mode" id="themeSystem" value="system" <?= ($settings['theme_mode'] ?? 'light') === 'system' ? 'checked' : '' ?>>
+                                <label class="setting-segment-btn" for="themeSystem" onclick="setSettingTheme('system')">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                    <span>System</span>
+                                </label>
 
-                            <input type="radio" class="btn-check" name="theme_mode" id="themeDark" value="dark" <?= ($settings['theme_mode'] ?? 'light') === 'dark' ? 'checked' : '' ?>>
-                            <label class="btn btn-outline-secondary" for="themeDark"><i class="bi bi-moon-stars me-1"></i><?php echo htmlspecialchars(t('dark_mode')); ?></label>
+                                <input type="radio" class="btn-check" name="theme_mode" id="themeLight" value="light" <?= ($settings['theme_mode'] ?? 'light') === 'light' ? 'checked' : '' ?>>
+                                <label class="setting-segment-btn" for="themeLight" onclick="setSettingTheme('light')">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                    <span>Light</span>
+                                </label>
+
+                                <input type="radio" class="btn-check" name="theme_mode" id="themeDark" value="dark" <?= ($settings['theme_mode'] ?? 'light') === 'dark' ? 'checked' : '' ?>>
+                                <label class="setting-segment-btn" for="themeDark" onclick="setSettingTheme('dark')">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                                    <span>Dark</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Contrast Style -->
+                        <div class="setting-row mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="setting-label fw-bold">Contrast Style</label>
+                                <span class="setting-sub-info">Matte Dark (Pic 5)</span>
+                            </div>
+                            <div class="setting-contrast-switch">
+                                <button type="button" class="contrast-btn active" id="contrastDefaultBtn" onclick="setContrast('default')">Default</button>
+                                <button type="button" class="contrast-btn" id="contrastStrongBtn" onclick="setContrast('strong')">Strong</button>
+                            </div>
+                        </div>
+
+                        <!-- Theme Preset -->
+                        <div class="setting-row mb-4">
+                            <label class="setting-label fw-bold mb-2">Theme Preset</label>
+                            <div class="setting-select-wrap">
+                                <select class="form-select setting-preset-select" id="themePresetSelect" onchange="changeThemePreset(this.value)">
+                                    <option value="matte" selected>Matte Dark (Pic 5)</option>
+                                    <option value="midnight">Midnight Navy</option>
+                                    <option value="amoled">AMOLED Pitch Black</option>
+                                    <option value="slate">Slate Indigo</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="setting-divider my-4" style="height:1px;background:var(--dp-border);"></div>
+
+                        <!-- Color Palette (Pic 2 Match) -->
+                        <div class="setting-row mb-2">
+                            <div class="setting-palette-head mb-3 d-flex align-items-center">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--dp-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.3 0 6-2.7 6-6 0-5.5-4.5-10-10-10z"/><circle cx="7.5" cy="11.5" r="1.5"/><circle cx="12" cy="7.5" r="1.5"/><circle cx="16.5" cy="11.5" r="1.5"/></svg>
+                                <span class="fw-bold">Color Palette</span>
+                            </div>
+
+                            <div class="palette-field-group mb-2">
+                                <div class="palette-input-row">
+                                    <span class="palette-input-label">Background</span>
+                                    <div class="palette-color-display">
+                                        <div class="palette-color-box" id="paletteBgBox" style="background:var(--dp-bg);"></div>
+                                        <span class="palette-hex-code" id="paletteBgHex">#0D0F12</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="palette-field-group mb-2">
+                                <div class="palette-input-row">
+                                    <span class="palette-input-label">Text Content</span>
+                                    <div class="palette-color-display">
+                                        <div class="palette-color-box" id="paletteTextBox" style="background:var(--dp-text);"></div>
+                                        <span class="palette-hex-code" id="paletteTextHex">#F8FAFC</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="palette-field-group mb-3">
+                                <div class="palette-input-row">
+                                    <span class="palette-input-label">Accent Focus</span>
+                                    <div class="palette-color-display">
+                                        <div class="palette-color-box" id="paletteAccentBox" style="background:var(--dp-primary);"></div>
+                                        <span class="palette-hex-code" id="paletteAccentHex">#6366F1</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="palette-swatches-row">
+                                <span class="palette-swatches-label">Presets:</span>
+                                <div class="palette-dots">
+                                    <button type="button" class="swatch-dot" style="background:#3b82f6;" title="Blue" onclick="applyAccentColor('#3b82f6')"></button>
+                                    <button type="button" class="swatch-dot active" style="background:#6366f1;" title="Indigo (Pic 5)" onclick="applyAccentColor('#6366f1')"></button>
+                                    <button type="button" class="swatch-dot" style="background:#0ea5e9;" title="Sky" onclick="applyAccentColor('#0ea5e9')"></button>
+                                    <button type="button" class="swatch-dot" style="background:#10b981;" title="Emerald" onclick="applyAccentColor('#10b981')"></button>
+                                    <button type="button" class="swatch-dot" style="background:#8b5cf6;" title="Purple" onclick="applyAccentColor('#8b5cf6')"></button>
+                                    <button type="button" class="swatch-dot" style="background:#f59e0b;" title="Amber" onclick="applyAccentColor('#f59e0b')"></button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -378,7 +482,7 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
                         </select>
                     </div>
 
-                    <button type="submit" class="btn btn-primary fw-bold px-4 rounded-3"><?php echo htmlspecialchars(t('save_preferences')); ?></button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4 rounded-3" data-loading-text="Saving Preferences..."><?php echo htmlspecialchars(t('save_preferences')); ?></button>
                 </form>
             </div>
         </div>
@@ -391,7 +495,7 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
                 <h6 class="section-title text-uppercase text-danger mb-3 small"><?php echo htmlspecialchars(t('danger_zone')); ?></h6>
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                     <div>
-                        <h6 class="mb-1 fw-semibold text-dark"><?php echo htmlspecialchars(t('delete_account')); ?></h6>
+                        <h6 class="mb-1 fw-semibold text-danger"><?php echo htmlspecialchars(t('delete_account')); ?></h6>
                         <p class="text-muted small mb-0">Enter your password to permanently delete your account and all of your data (planner, subjects, goals, expenses, notes). This cannot be undone.</p>
                     </div>
                     <form method="post" class="w-100" onsubmit="return confirm('Are you absolutely sure? This permanently deletes your account and ALL data. This cannot be undone!');">
@@ -399,7 +503,7 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
                         <input type="hidden" name="delete_account" value="1">
                         <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
                             <input type="password" name="delete_password" class="form-control rounded-3" placeholder="<?php echo htmlspecialchars(t('enter_password')); ?>" required style="max-width: 260px;">
-                            <button type="submit" class="btn btn-outline-danger btn-sm fw-semibold"><i class="bi bi-trash me-1"></i>Delete Account</button>
+                            <button type="submit" class="btn btn-outline-danger btn-sm fw-semibold" data-loading-text="Deleting..."><i class="bi bi-trash me-1"></i>Delete Account</button>
                         </div>
                     </form>
                 </div>
@@ -409,6 +513,137 @@ function settings_tab_link(string $tab, string $label, string $icon, string $act
     <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<script>
+function setSettingTheme(mode) {
+    var effective = mode;
+    if (mode === 'system') {
+        effective = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', effective);
+    if (document.body) document.body.setAttribute('data-theme', effective);
+    if (effective === 'dark') {
+        document.documentElement.setAttribute('data-bs-theme', 'dark');
+        if (document.body) document.body.setAttribute('data-bs-theme', 'dark');
+    } else {
+        document.documentElement.removeAttribute('data-bs-theme');
+        if (document.body) document.body.removeAttribute('data-bs-theme');
+    }
+    try {
+        localStorage.setItem('dp_theme', mode);
+    } catch(e) {}
+    document.cookie = 'theme_mode=' + encodeURIComponent(mode) + '; path=/; max-age=31536000; SameSite=Lax';
+
+    ['themeSystem', 'themeLight', 'themeDark'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.checked = (el.value === mode);
+    });
+
+    var badge = document.getElementById('currentThemeBadge');
+    if (badge) badge.textContent = mode.charAt(0).toUpperCase() + mode.slice(1) + ' Mode';
+    updatePaletteDisplay(effective);
+
+    var fd = new FormData();
+    fd.append('theme_mode', mode);
+    fetch('theme_toggle.php', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'fetch' } }).catch(function(){});
+}
+
+function updatePaletteDisplay(effectiveTheme) {
+    var bgBox = document.getElementById('paletteBgBox');
+    var bgHex = document.getElementById('paletteBgHex');
+    var textBox = document.getElementById('paletteTextBox');
+    var textHex = document.getElementById('paletteTextHex');
+    var isDark = effectiveTheme === 'dark';
+    if (!isDark) {
+        if (bgBox) bgBox.style.background = '#f8fafc';
+        if (bgHex) bgHex.textContent = '#F8FAFC';
+        if (textBox) textBox.style.background = '#0f172a';
+        if (textHex) textHex.textContent = '#0F172A';
+    } else {
+        if (bgBox) bgBox.style.background = '#0d0f12';
+        if (bgHex) bgHex.textContent = '#0D0F12';
+        if (textBox) textBox.style.background = '#f8fafc';
+        if (textHex) textHex.textContent = '#F8FAFC';
+    }
+}
+
+function setContrast(type) {
+    var defBtn = document.getElementById('contrastDefaultBtn');
+    var strBtn = document.getElementById('contrastStrongBtn');
+    if (defBtn) defBtn.classList.toggle('active', type === 'default');
+    if (strBtn) strBtn.classList.toggle('active', type === 'strong');
+    try {
+        localStorage.setItem('dp_contrast', type);
+    } catch(e) {}
+    document.cookie = 'dp_contrast=' + encodeURIComponent(type) + '; path=/; max-age=31536000; SameSite=Lax';
+    if (type === 'strong') {
+        document.documentElement.style.setProperty('--dp-border', 'rgba(255, 255, 255, 0.28)');
+    } else {
+        document.documentElement.style.removeProperty('--dp-border');
+    }
+}
+
+function changeThemePreset(preset) {
+    try {
+        localStorage.setItem('dp_preset', preset);
+    } catch(e) {}
+    document.cookie = 'dp_preset=' + encodeURIComponent(preset) + '; path=/; max-age=31536000; SameSite=Lax';
+    if (preset === 'midnight') {
+        applyAccentColor('#3b82f6');
+        document.documentElement.style.setProperty('--dp-bg', '#0b1120');
+        document.documentElement.style.setProperty('--dp-surface', '#111827');
+    } else if (preset === 'amoled') {
+        applyAccentColor('#6366f1');
+        document.documentElement.style.setProperty('--dp-bg', '#000000');
+        document.documentElement.style.setProperty('--dp-surface', '#0a0a0a');
+    } else if (preset === 'slate') {
+        applyAccentColor('#8b5cf6');
+        document.documentElement.style.setProperty('--dp-bg', '#0f172a');
+        document.documentElement.style.setProperty('--dp-surface', '#1e293b');
+    } else {
+        applyAccentColor('#6366f1');
+        document.documentElement.style.removeProperty('--dp-bg');
+        document.documentElement.style.removeProperty('--dp-surface');
+    }
+    updatePaletteDisplay(document.documentElement.getAttribute('data-theme') || 'dark');
+}
+
+function applyAccentColor(hex) {
+    var accBox = document.getElementById('paletteAccentBox');
+    var accHex = document.getElementById('paletteAccentHex');
+    if (accBox) accBox.style.background = hex;
+    if (accHex) accHex.textContent = hex.toUpperCase();
+    document.documentElement.style.setProperty('--dp-primary', hex);
+    try {
+        localStorage.setItem('dp_accent', hex);
+    } catch(e) {}
+    document.cookie = 'dp_accent=' + encodeURIComponent(hex) + '; path=/; max-age=31536000; SameSite=Lax';
+    document.querySelectorAll('.swatch-dot').forEach(function(d) {
+        var bg = d.style.background || '';
+        d.classList.toggle('active', bg.toLowerCase().indexOf(hex.toLowerCase()) !== -1);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var storedTheme = localStorage.getItem('dp_theme') || document.documentElement.getAttribute('data-theme') || 'dark';
+    var effective = storedTheme === 'system' ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light') : storedTheme;
+    updatePaletteDisplay(effective);
+    var badge = document.getElementById('currentThemeBadge');
+    if (badge) badge.textContent = storedTheme.charAt(0).toUpperCase() + storedTheme.slice(1) + ' Mode';
+
+    var storedPreset = localStorage.getItem('dp_preset');
+    if (storedPreset) {
+        var presetSel = document.getElementById('themePresetSelect');
+        if (presetSel) presetSel.value = storedPreset;
+    }
+    var storedContrast = localStorage.getItem('dp_contrast');
+    if (storedContrast) {
+        setContrast(storedContrast);
+    }
+    var storedAccent = localStorage.getItem('dp_accent');
+    if (storedAccent) {
+        applyAccentColor(storedAccent);
+    }
+});
+</script>
+
+<?php layout_footer(); ?>

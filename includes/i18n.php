@@ -26,6 +26,10 @@ $translations = [
         'profile' => 'Profile',
         'settings' => 'Settings',
         'logout' => 'Logout',
+        'logout_confirm_title' => 'Log out of Daily Planner?',
+        'logout_confirm_message' => 'You will be signed out and need to log in again to reach your planner, notes and goals.',
+        'stay_signed_in' => 'Stay signed in',
+        'confirm' => 'Confirm',
         'language' => 'Language',
         'english' => 'English',
         'khmer' => 'Khmer',
@@ -73,6 +77,10 @@ $translations = [
         'profile' => 'ប្រវត្តិរូប',
         'settings' => 'ការកំណត់',
         'logout' => 'ចេញ',
+        'logout_confirm_title' => 'តើអ្នកចង់ចាកចេញពីផែនការប្រចាំថ្ងៃទេ?',
+        'logout_confirm_message' => 'អ្នកនឹងត្រូវចាកចេញពីគណនី ហើយត្រូវចូលម្ដងទៀត ដើម្បីចូលមើលកាលវិភាគ កំណត់ចំណាំ និងគោលដៅរបស់អ្នក។',
+        'stay_signed_in' => 'បន្តក្នុងគណនី',
+        'confirm' => 'បញ្ជាក់',
         'language' => 'ភាសា',
         'english' => 'អង់គ្លេស',
         'khmer' => 'ខ្មែរ',
@@ -134,5 +142,5 @@ function current_lang(): string
 function current_theme(): string
 {
     $theme = $_SESSION['theme'] ?? ($_COOKIE['theme_mode'] ?? 'light');
-    return in_array($theme, ['light', 'dark'], true) ? $theme : 'light';
+    return in_array($theme, ['light', 'dark', 'system'], true) ? $theme : 'light';
 }

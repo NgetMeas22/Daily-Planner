@@ -9,10 +9,19 @@ require_once __DIR__ . '/i18n.php';
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
+$csrfToken = $_SESSION['csrf_token'];
+
+if (!function_exists('csrf_valid')) {
+    function csrf_valid(?string $token = null): bool
+    {
+        $token = $token ?? ($_POST['csrf_token'] ?? null);
+        return isset($token) && isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    }
+}
 
 function normalize_theme_mode(?string $theme): string
 {
-    return in_array($theme, ['light', 'dark'], true) ? $theme : 'light';
+    return in_array($theme, ['light', 'dark', 'system'], true) ? $theme : 'dark';
 }
 
 function current_request_path(): string
@@ -57,34 +66,77 @@ function redirect($path)
     exit;
 }
 
-function is_logged_in()
+function is_logged_in(): bool
 {
-    return isset($_SESSION['user_id']);
+    return isset($_SESSION['user_id']) && is_numeric($_SESSION['user_id']) && (int) $_SESSION['user_id'] > 0;
 }
 
-function require_login()
+function require_login(): void
 {
     if (!is_logged_in()) {
         redirect('index.php');
     }
+
+    global $conn;
+    $userId = (int) $_SESSION['user_id'];
+
+    if ($conn) {
+        $stmt = $conn->prepare('SELECT id, fullname, username, avatar, avatar_data FROM users WHERE id = ? LIMIT 1');
+        if ($stmt) {
+            $stmt->bind_param('i', $userId);
+            $stmt->execute();
+            $user = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$user) {
+                // Stale or deleted user session
+                $_SESSION = [];
+                if (session_id()) {
+                    session_destroy();
+                }
+                redirect('index.php');
+            }
+
+            // Keep session parameters sanitized and fresh
+            $_SESSION['user_id'] = (int) $user['id'];
+            $cleanName = trim((string) ($user['fullname'] ?: $user['username']));
+            $_SESSION['user_name'] = strip_tags($cleanName) ?: 'User';
+            if (!empty($user['avatar_data'])) {
+                $_SESSION['user_avatar'] = $user['avatar_data'];
+            } elseif (!empty($user['avatar'])) {
+                $_SESSION['user_avatar'] = $user['avatar'];
+            }
+        }
+    }
+
+    // Sanitize session language
+    if (!isset($_SESSION['lang']) || !in_array($_SESSION['lang'], ['en', 'kh'], true)) {
+        $_SESSION['lang'] = 'en';
+    }
 }
 
 if (is_logged_in()) {
-    // Fast path: trust the long-lived cookie first so page loads skip the
-    // per-request settings query. The DB is only hit when no cookie exists
-    // yet (first login on a device); the choice is then persisted as a cookie.
+    $_SESSION['user_id'] = (int) $_SESSION['user_id'];
+    if (!isset($_SESSION['lang']) || !in_array($_SESSION['lang'], ['en', 'kh'], true)) {
+        $_SESSION['lang'] = 'en';
+    }
+
     if (!empty($_COOKIE['theme_mode'])) {
         $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode']);
     } else {
-        $themeMode = 'light';
-        $themeStmt = $conn->prepare('SELECT theme_mode FROM settings WHERE user_id = ? LIMIT 1');
-        $themeStmt->bind_param('i', $_SESSION['user_id']);
-        $themeStmt->execute();
-        $themeRow = $themeStmt->get_result()->fetch_assoc();
-        $themeStmt->close();
+        $themeMode = 'dark';
+        if ($conn) {
+            $themeStmt = $conn->prepare('SELECT theme_mode FROM settings WHERE user_id = ? LIMIT 1');
+            if ($themeStmt) {
+                $themeStmt->bind_param('i', $_SESSION['user_id']);
+                $themeStmt->execute();
+                $themeRow = $themeStmt->get_result()->fetch_assoc();
+                $themeStmt->close();
 
-        if ($themeRow && isset($themeRow['theme_mode'])) {
-            $themeMode = normalize_theme_mode($themeRow['theme_mode']);
+                if ($themeRow && isset($themeRow['theme_mode'])) {
+                    $themeMode = normalize_theme_mode($themeRow['theme_mode']);
+                }
+            }
         }
 
         setcookie('theme_mode', $themeMode, [
@@ -95,5 +147,5 @@ if (is_logged_in()) {
         $_SESSION['theme'] = $themeMode;
     }
 } else {
-    $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode'] ?? ($_SESSION['theme'] ?? 'light'));
+    $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode'] ?? ($_SESSION['theme'] ?? 'dark'));
 }

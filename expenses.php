@@ -270,19 +270,10 @@ $totalKhr = $totalUsd * $khrRate;
 $incomeUsd = $dateIncomeTotal;
 $incomeKhr = $incomeUsd * $khrRate;
 
-?>
-<!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLang); ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Expenses & Reports</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
+require_once __DIR__ . '/includes/layout.php';
+
+$pageExtraHead = <<<'EOD'
+<style>
         :root {
             --paper: #F5F7FA;
             --surface: #FFFFFF;
@@ -370,30 +361,112 @@ $incomeKhr = $incomeUsd * $khrRate;
         }
         .date-nav-btn:hover { background: var(--paper); color: var(--ink); border-color: var(--ink-soft); }
 
-        /* ---- Stat Cards ---- */
+        /* ---- Stat Cards (Clean SaaS Design - 1 Single Row) ---- */
+        .stat-cards-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+        }
+        @media (max-width: 991px) {
+            .stat-cards-grid-4 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 576px) {
+            .stat-cards-grid-4 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-cards-grid-4 .stat-card,
         .stat-card {
             background: var(--surface);
             border: 1.5px solid var(--border);
             border-radius: var(--radius);
+            padding: 20px 22px;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            text-align: left !important;
+            position: relative;
             overflow: hidden;
-            transition: transform var(--transition-slow), box-shadow var(--transition-slow), background var(--transition-slow), border-color var(--transition-slow);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, border-color 0.25s ease;
         }
-        .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-        .stat-card .stat-accent { height: 4px; width: 100%; }
-        .stat-card .stat-body { padding: 18px 20px; }
-        .stat-label { font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px; }
-        .stat-value {
-            font-size: 1.5rem;
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+        .stat-card.card-today::before { background: linear-gradient(90deg, #FF6B6B, #FAB1A0); }
+        .stat-card.card-month::before { background: linear-gradient(90deg, #E17055, #FDCB6E); }
+        .stat-card.card-alltime::before { background: linear-gradient(90deg, #6C5CE7, #A29BFE); }
+        .stat-card.card-budget::before { background: linear-gradient(90deg, #00B894, #55EFC4); }
+
+        .stat-label-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            width: 100%;
+        }
+        .stat-val-text {
+            font-size: 1.85rem;
             font-weight: 800;
             line-height: 1.15;
-            transition: color var(--transition-slow);
+            letter-spacing: -0.02em;
+            margin: 2px 0;
+            text-align: left !important;
+            align-self: flex-start !important;
         }
-        .stat-sub { font-size: .74rem; color: var(--ink-soft); margin-top: auto; padding-top: 8px; }
-
-        .accent-today { background: linear-gradient(90deg, #FF6B6B, #FAB1A0); }
-        .accent-month { background: linear-gradient(90deg, #E17055, #FDCB6E); }
-        .accent-alltime { background: linear-gradient(90deg, #6C5CE7, #A29BFE); }
-        .accent-budget { background: linear-gradient(90deg, #00B894, #55EFC4); }
+        .stat-income-sub {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #00B894;
+            text-align: left !important;
+            align-self: flex-start !important;
+            margin-top: 2px;
+        }
+        .stat-footer-sub {
+            font-size: 0.74rem;
+            color: var(--ink-soft);
+            margin-top: auto;
+            padding-top: 14px;
+            text-align: left !important;
+            align-self: flex-start !important;
+            width: 100%;
+        }
+        .btn-report-pill {
+            background: rgba(0, 184, 148, 0.1);
+            color: #00B894;
+            border: 1px solid rgba(0, 184, 148, 0.25);
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.74rem;
+            padding: 3px 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+        .btn-report-pill:hover {
+            background: #00B894;
+            color: #ffffff;
+        }
 
         /* ---- Collapsible Form Cards ---- */
         .add-form-card {
@@ -679,10 +752,10 @@ $incomeKhr = $incomeUsd * $khrRate;
         body[data-theme="dark"] .report-summary-card { background: var(--surface); }
         body[data-theme="dark"] .report-day-card { background: var(--surface); }
     </style>
-</head>
-<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
+EOD;
 
-<?php $activePage = 'expenses'; include __DIR__ . '/includes/navbar.php'; ?>
+layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
+?>
 
 <div class="container py-4" style="max-width: 1200px;">
 
@@ -733,62 +806,57 @@ $incomeKhr = $incomeUsd * $khrRate;
         </div>
     <?php endif; ?>
 
-    <!-- Stats Cards -->
-    <div class="row g-3 mb-4 anim-up anim-1">
+    <!-- Stats Cards (Pic 3 Match: All 4 in 1 Single Horizontal Row) -->
+    <div class="stat-cards-grid-4 mb-4 anim-up anim-1">
         <!-- Today -->
-        <div class="col-12 col-md-6 col-xl-3">
-            <div class="stat-card h-100">
-                <div class="stat-accent accent-today"></div>
-                <div class="stat-body d-flex flex-column h-100">
-                    <p class="stat-label"><i class="bi bi-calendar-day me-1"></i>Total Spent Today</p>
-                    <div class="stat-value" style="color:#FF6B6B;">-$<?php echo number_format($dateExpenseTotal, 2); ?></div>
-                    <div class="small fw-semibold" style="color:#00B894;">+$<?php echo number_format($dateIncomeTotal, 2); ?> income</div>
-                    <p class="stat-sub"><?php echo count($dateItems); ?> item(s) logged on this date</p>
-                </div>
+        <div class="stat-card card-today">
+            <div class="stat-label-title">
+                <i class="bi bi-calendar-event me-2"></i>TOTAL SPENT TODAY
+            </div>
+            <div class="stat-val-text" style="color:#FF6B6B;">-$<?php echo number_format($dateExpenseTotal, 2); ?></div>
+            <div class="stat-income-sub">+$<?php echo number_format($dateIncomeTotal, 2); ?> income</div>
+            <div class="stat-footer-sub">
+                <?php echo count($dateItems); ?> item(s) logged on this date
             </div>
         </div>
+
         <!-- This Month -->
-        <div class="col-12 col-md-6 col-xl-3">
-            <div class="stat-card h-100">
-                <div class="stat-accent accent-month"></div>
-                <div class="stat-body d-flex flex-column h-100">
-                    <p class="stat-label"><i class="bi bi-calendar-month me-1"></i>Total Spent (This Month)</p>
-                    <div class="stat-value" style="color:#E17055;">-$<?php echo number_format($monthlyExpenseTotal, 2); ?></div>
-                    <div class="small fw-semibold" style="color:#00B894;">+$<?php echo number_format($monthlyIncomeTotal, 2); ?> income</div>
-                    <p class="stat-sub"><?php echo htmlspecialchars(date('F Y', strtotime($selectedDate))); ?> totals</p>
-                </div>
+        <div class="stat-card card-month">
+            <div class="stat-label-title">
+                <i class="bi bi-calendar-month me-2"></i>TOTAL SPENT (THIS MONTH)
+            </div>
+            <div class="stat-val-text" style="color:#E17055;">-$<?php echo number_format($monthlyExpenseTotal, 2); ?></div>
+            <div class="stat-income-sub">+$<?php echo number_format($monthlyIncomeTotal, 2); ?> income</div>
+            <div class="stat-footer-sub">
+                <?php echo htmlspecialchars(date('F Y', strtotime($selectedDate))); ?> totals
             </div>
         </div>
+
         <!-- All-Time -->
-        <div class="col-12 col-md-6 col-xl-3">
-            <div class="stat-card h-100">
-                <div class="stat-accent accent-alltime"></div>
-                <div class="stat-body d-flex flex-column h-100">
-                    <p class="stat-label"><i class="bi bi-infinity me-1"></i>Total Spent (All-Time)</p>
-                    <div class="stat-value" style="color:#6C5CE7;">-$<?php echo number_format($allExpenseTotal, 2); ?></div>
-                    <div class="small fw-semibold" style="color:#00B894;">+$<?php echo number_format($allIncomeTotal, 2); ?> income</div>
-                    <p class="stat-sub">Accumulated total spending &amp; income</p>
-                </div>
+        <div class="stat-card card-alltime">
+            <div class="stat-label-title">
+                <i class="bi bi-infinity me-2"></i>TOTAL SPENT (ALL-TIME)
+            </div>
+            <div class="stat-val-text" style="color:#6C5CE7;">-$<?php echo number_format($allExpenseTotal, 2); ?></div>
+            <div class="stat-income-sub">+$<?php echo number_format($allIncomeTotal, 2); ?> income</div>
+            <div class="stat-footer-sub">
+                Accumulated total spending &amp; income
             </div>
         </div>
+
         <!-- Remaining Budget -->
-        <div class="col-12 col-md-6 col-xl-3">
-            <div class="stat-card h-100">
-                <div class="stat-accent accent-budget"></div>
-                <div class="stat-body d-flex flex-column h-100">
-                    <div class="d-flex justify-content-between align-items-center gap-2">
-                        <p class="stat-label mb-0"><i class="bi bi-wallet2 me-1"></i>Remaining Budget</p>
-                        <button onclick="openReportModal()" class="btn btn-sm" style="background:rgba(0,184,148,.1);color:#00B894;border:1px solid rgba(0,184,148,.2);border-radius:8px;font-weight:600;font-size:.72rem;padding:4px 10px;transition:var(--transition);">
-                            <i class="bi bi-file-earmark-bar-graph me-1"></i>Report
-                        </button>
-                    </div>
-                    <div class="stat-value" style="color:#00B894;">$<?php echo number_format($remaining, 2); ?></div>
-                    <?php if ($dispCarryIn > 0): ?>
-                        <p class="stat-sub">Budget $<?php echo number_format($dispBase, 2); ?> <span style="color:#00B894;">+ $<?php echo number_format($dispCarryIn, 2); ?> carried</span> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?></p>
-                    <?php else: ?>
-                        <p class="stat-sub">Budget $<?php echo number_format($effectiveBudget, 2); ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?></p>
-                    <?php endif; ?>
+        <div class="stat-card card-budget">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+                <div class="stat-label-title mb-0">
+                    <i class="bi bi-wallet2 me-2"></i>REMAINING BUDGET
                 </div>
+                <button type="button" onclick="openReportModal()" class="btn-report-pill">
+                    <i class="bi bi-file-earmark-bar-graph me-1"></i>Report
+                </button>
+            </div>
+            <div class="stat-val-text" style="color:#00B894;">$<?php echo number_format($remaining, 2); ?></div>
+            <div class="stat-footer-sub">
+                Budget $<?php echo number_format($dispBase, 2); ?><?php if ($dispCarryIn > 0): ?> <span style="color:#00B894;">+ $<?php echo number_format($dispCarryIn, 2); ?> carried</span><?php endif; ?> - Expenses $<?php echo number_format($monthlyExpenseTotal, 2); ?> + Income $<?php echo number_format($monthlyIncomeTotal, 2); ?>
             </div>
         </div>
     </div>
@@ -1455,8 +1523,7 @@ $incomeKhr = $incomeUsd * $khrRate;
                         <p class="section-label">Daily Breakdown</p>
                         ${daysHtml || '<div class="empty-note">No entries to show.</div>'}
                     </div>
-                </body>
-            </html>
+                </body></html>
         `;
     }
 
@@ -1500,6 +1567,4 @@ $incomeKhr = $incomeUsd * $khrRate;
     }
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<?php layout_footer(); ?>

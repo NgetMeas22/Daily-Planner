@@ -7,20 +7,83 @@
    custom per-page classes used across the app.
    ========================================================= */
 
-/* ---------- Base ---------- */
-body[data-theme="dark"] {
-    --dp-bg: #0b1120;
-    --dp-surface: #111827;
-    --dp-surface-2: #0f172a;
-    --dp-elevated: #1e293b;
-    --dp-border: #334155;
-    --dp-border-soft: #243047;
-    --dp-text: #e2e8f0;
-    --dp-text-strong: #f1f5f9;
-    --dp-muted: #94a3b8;
+/* ---------- Base Modern Minimalist Palette (Slate/Zinc Neutrals) ---------- */
+:root,
+html[data-theme="light"],
+body[data-theme="light"] {
+    /* Requested CSS Variable System */
+    --bg-primary: #f8fafc;
+    --bg-secondary: #f1f5f9;
+    --card-bg: #ffffff;
+    --card-bg-elevated: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border-color: #e2e8f0;
+    --border-subtle: #f1f5f9;
+    --accent-primary: #3b82f6;
 
-    background: var(--dp-bg);
-    color: var(--dp-text);
+    /* Backward Compatible Aliases */
+    --dp-bg: var(--bg-primary);
+    --dp-surface: var(--card-bg);
+    --dp-surface-2: var(--bg-secondary);
+    --dp-elevated: var(--card-bg-elevated);
+    --dp-border: var(--border-color);
+    --dp-border-soft: var(--border-subtle);
+    --dp-text: var(--text-primary);
+    --dp-text-strong: var(--text-primary);
+    --dp-muted: var(--text-muted);
+    --dp-primary: var(--accent-primary);
+
+    /* Common alias tokens across pages (notes, expenses, goals, planner) */
+    --paper: var(--bg-primary);
+    --surface: var(--card-bg);
+    --ink: var(--text-primary);
+    --ink-soft: var(--text-secondary);
+    --border: var(--border-color);
+
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    color-scheme: light;
+}
+
+html[data-theme="dark"],
+body[data-theme="dark"],
+[data-theme="dark"],
+[data-bs-theme="dark"] {
+    /* Refined Deep Slate/Zinc Neutral Palette */
+    --bg-primary: #0b0f17;
+    --bg-secondary: #111827;
+    --card-bg: #141b26;
+    --card-bg-elevated: #1a2332;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --accent-primary: #3b82f6;
+
+    /* Backward Compatible Aliases */
+    --dp-bg: var(--bg-primary);
+    --dp-surface: var(--card-bg);
+    --dp-surface-2: var(--card-bg-elevated);
+    --dp-elevated: var(--card-bg-elevated);
+    --dp-border: var(--border-color);
+    --dp-border-soft: var(--border-subtle);
+    --dp-text: var(--text-primary);
+    --dp-text-strong: #ffffff;
+    --dp-muted: var(--text-muted);
+    --dp-primary: var(--accent-primary);
+
+    /* Common alias tokens across pages */
+    --paper: var(--bg-primary);
+    --surface: var(--card-bg);
+    --ink: var(--text-primary);
+    --ink-soft: var(--text-muted);
+    --border: var(--border-color);
+
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
     color-scheme: dark;
 }
 html[data-bs-theme="dark"] { color-scheme: dark; }
@@ -84,6 +147,9 @@ body[data-theme="dark"] .form-select {
 }
 body[data-theme="dark"] .form-select:not([multiple]) {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3cpath fill='none' stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3c/svg%3E");
+    background-repeat: no-repeat !important;
+    background-position: right 0.75rem center !important;
+    background-size: 16px 12px !important;
 }
 body[data-theme="dark"] .form-control::placeholder { color: #64748b; opacity: 1; }
 body[data-theme="dark"] .form-control:focus,

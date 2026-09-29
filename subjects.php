@@ -49,19 +49,10 @@ $stmt = $conn->prepare('SELECT id, name, description, created_at FROM subjects W
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-?>
-<!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLang); ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subjects</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
+require_once __DIR__ . '/includes/layout.php';
+
+$pageExtraHead = <<<'EOD'
+<style>
         :root {
             --paper: #F5F7FA;
             --surface: #FFFFFF;
@@ -263,9 +254,10 @@ $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             .subject-grid-card { padding: 16px; }
         }
     </style>
-</head>
-<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
-<?php $activePage = 'subjects'; include __DIR__ . '/includes/navbar.php'; ?>
+EOD;
+
+layout_header('Subjects', 'subjects', $pageExtraHead);
+?>
 
 <div class="container py-4" style="max-width: 1200px;">
 
@@ -428,6 +420,4 @@ function openEditSubject(id) {
     new bootstrap.Modal(document.getElementById('editSubjectModal')).show();
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<?php layout_footer(); ?>

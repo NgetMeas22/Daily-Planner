@@ -13,9 +13,11 @@ const SECURE_UNLOCK_SECONDS = 180;
 const NOTE_ENCRYPTION_CIPHER = 'aes-256-cbc';
 const NOTE_ENCRYPTION_SECRET = 'daily_planner_notes_v1';
 
-function csrf_valid(): bool
-{
-    return isset($_POST['csrf_token']) && isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
+if (!function_exists('csrf_valid')) {
+    function csrf_valid(): bool
+    {
+        return isset($_POST['csrf_token']) && isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
+    }
 }
 
 function format_note_date(?string $datetime): string
@@ -212,19 +214,10 @@ $secureUnlockedAt = $_SESSION['secure_notes_unlocked_at'] ?? null;
 $secureUnlocked = $secureUnlockedAt !== null && (time() - $secureUnlockedAt <= SECURE_UNLOCK_SECONDS);
 $secureUnlockRemaining = $secureUnlocked ? SECURE_UNLOCK_SECONDS - (time() - $secureUnlockedAt) : 0;
 if ($secureUnlockedAt !== null && !$secureUnlocked) unset($_SESSION['secure_notes_unlocked_at']);
-?>
-<!DOCTYPE html>
-<html lang="<?php echo htmlspecialchars($currentLang); ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars(t('notes')); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
+require_once __DIR__ . '/includes/layout.php';
+
+$pageExtraHead = <<<'EOD'
+<style>
         :root {
             --paper: #F5F7FA;
             --surface: #FFFFFF;
@@ -536,10 +529,78 @@ if ($secureUnlockedAt !== null && !$secureUnlocked) unset($_SESSION['secure_note
             .note-form-body { padding: 16px; }
             .note-card-body { padding: 16px; }
         }
+
+        /* ---- Dark Mode Overrides (Full Support) ---- */
+        html[data-theme="dark"],
+        body[data-theme="dark"],
+        [data-theme="dark"] {
+            --paper: #090d16;
+            --surface: #101726;
+            --ink: #f8fafc;
+            --ink-soft: #94a3b8;
+            --border: #1e293b;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
+            --shadow-md: 0 4px 16px rgba(0,0,0,.45);
+            background: var(--paper) !important;
+            color: var(--ink) !important;
+        }
+
+        body[data-theme="dark"] .note-card,
+        body[data-theme="dark"] .note-form-card,
+        body[data-theme="dark"] .secure-bar,
+        body[data-theme="dark"] .search-bar input,
+        body[data-theme="dark"] .form-control,
+        body[data-theme="dark"] .modal-content {
+            background-color: var(--surface) !important;
+            border-color: var(--border) !important;
+            color: var(--ink) !important;
+        }
+
+        body[data-theme="dark"] .note-card-meta {
+            background-color: #0c121e !important;
+            border-top-color: var(--border) !important;
+        }
+
+        body[data-theme="dark"] .note-card-title {
+            color: #ffffff !important;
+        }
+
+        body[data-theme="dark"] .filter-tabs {
+            background: #0c121e !important;
+            border-color: var(--border) !important;
+        }
+
+        body[data-theme="dark"] .filter-tab {
+            color: var(--ink-soft);
+        }
+
+        body[data-theme="dark"] .filter-tab.active {
+            background: #182235 !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,.3) !important;
+        }
+
+        body[data-theme="dark"] .filter-tab .tab-count {
+            background: #101726;
+            border-color: var(--border);
+            color: var(--ink-soft);
+        }
+
+        body[data-theme="dark"] .btn-note-action,
+        body[data-theme="dark"] .btn-cancel {
+            background: #182235 !important;
+            border-color: var(--border) !important;
+            color: var(--ink) !important;
+        }
+
+        body[data-theme="dark"] .note-card-content.truncated::after {
+            background: linear-gradient(transparent, var(--surface)) !important;
+        }
     </style>
-</head>
-<body data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
-<?php $activePage = 'notes'; include __DIR__ . '/includes/navbar.php'; ?>
+EOD;
+
+layout_header('Notes', 'notes', $pageExtraHead);
+?>
 
 <div class="container py-4 py-md-5" style="max-width: 1200px;">
 
@@ -859,8 +920,7 @@ document.querySelectorAll('.filter-tab').forEach(function(tab) {
     });
 });
 </script>
-</body>
-</html>
+<?php layout_footer(); ?>
 <?php
 unset($_SESSION['secure_notes_unlocked_at']);
 ?>
