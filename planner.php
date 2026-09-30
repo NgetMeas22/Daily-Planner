@@ -31,9 +31,12 @@
             $startTimes = $_POST['start_time'] ?? [];
             $endTimes = $_POST['end_time'] ?? [];
             $studyDate = $_POST['study_date'] ?? $selectedDate;
-            $dayName = $_POST['day_name'] ?? '';
+            $dayName = trim($_POST['day_name'] ?? '');
+            if (empty($dayName)) {
+                $dayName = date('l', strtotime($studyDate));
+            }
 
-            if (empty($selectedSubjects) || empty($studyDate) || empty($dayName)) {
+            if (empty($selectedSubjects) || empty($studyDate)) {
                 $errors[] = 'Please select at least one subject and set its time.';
             } else {
                 $stmt = $conn->prepare('INSERT INTO planner (user_id, subject_id, study_date, day_name, start_time, end_time, topic, goal, progress, status, result) VALUES (?, ?, ?, ?, ?, ?, "", "", 0, "Pending", "")');
@@ -110,17 +113,18 @@
     }
 
     // --- DATA FETCHING ---
-    // Fetch Subjects List
-    $subjectsStmt = $conn->prepare('SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC');
+    // Fetch Subjects List (User custom + default template subjects)
+    $subjectsStmt = $conn->prepare('SELECT id, name FROM subjects WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC');
     $subjectsStmt->bind_param('i', $userId);
     $subjectsStmt->execute();
     $subjects = $subjectsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Fetch Today's Tasks
+    // Fetch Today's Tasks (LEFT JOIN so unlinked/deleted subjects never cause tasks to disappear)
     $dayRowsStmt = $conn->prepare("
-        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, p.subject_id, p.topic, p.goal, p.result, s.name AS subject_name
+        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, p.subject_id, p.topic, p.goal, p.result,
+               COALESCE(s.name, NULLIF(p.topic, ''), 'Study Task') AS subject_name
         FROM planner p
-        INNER JOIN subjects s ON s.id = p.subject_id
+        LEFT JOIN subjects s ON s.id = p.subject_id
         WHERE p.user_id = ? AND p.study_date = ?
         ORDER BY p.start_time ASC, p.id ASC
     ");
@@ -178,9 +182,10 @@
     // Fetch History Data (limited to a rolling 30-day window so the page stays fast)
     $historyStart = date('Y-m-d', strtotime('-29 days', $selectedTs));
     $historyStmt = $conn->prepare("
-        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status, s.name AS subject_name
+        SELECT p.id, p.study_date, p.day_name, p.start_time, p.end_time, p.progress, p.status,
+               COALESCE(s.name, NULLIF(p.topic, ''), 'Study Task') AS subject_name
         FROM planner p
-        INNER JOIN subjects s ON s.id = p.subject_id
+        LEFT JOIN subjects s ON s.id = p.subject_id
         WHERE p.user_id = ? AND p.study_date <= ? AND p.study_date >= ?
         ORDER BY p.study_date DESC, p.start_time ASC
     ");
@@ -205,9 +210,9 @@
     $copyTemplateRows = [];
     if ($copyFromDate && $copyFromDate !== $selectedDate) {
         $copyStmt = $conn->prepare("
-            SELECT p.subject_id, p.start_time, p.end_time, s.name AS subject_name
+            SELECT p.subject_id, p.start_time, p.end_time, COALESCE(s.name, 'Study Task') AS subject_name
             FROM planner p
-            INNER JOIN subjects s ON s.id = p.subject_id
+            LEFT JOIN subjects s ON s.id = p.subject_id
             WHERE p.user_id = ? AND p.study_date = ?
             ORDER BY p.start_time ASC, p.id ASC
         ");
@@ -239,12 +244,12 @@
 $pageExtraHead = <<<'EOD'
 <style>
         :root {
-            --paper: #F5F7FA;
-            --surface: #FFFFFF;
-            --ink: #1A1D2E;
-            --ink-soft: #6B7190;
-            --border: #E8EBF2;
-            --accent: #0984E3;
+            --paper: var(--dp-bg, #F5F7FA);
+            --surface: var(--dp-surface, #FFFFFF);
+            --ink: var(--dp-text, #1A1D2E);
+            --ink-soft: var(--dp-muted, #6B7190);
+            --border: var(--dp-border, #E8EBF2);
+            --accent: var(--dp-primary, #0984E3);
             --radius: 16px;
             --radius-sm: 10px;
             --shadow-sm: 0 1px 3px rgba(0,0,0,.04);
@@ -614,32 +619,226 @@ $pageExtraHead = <<<'EOD'
         #plannerReportModal .modal-body { background: var(--surface); color: var(--ink); }
         #plannerReportModal .modal-footer { background: var(--paper); }
 
-        /* ---- Dark Mode ---- */
+        /* ---- Dark Mode (Pic 4 Antigravity IDE Match) ---- */
         body[data-theme="dark"] {
-            --paper: #0b1120;
-            --surface: #111827;
-            --ink: #e2e8f0;
-            --ink-soft: #94a3b8;
-            --border: #243047;
+            --paper: var(--dp-bg, #101010);
+            --surface: var(--dp-surface, #161616);
+            --ink: var(--dp-text, #cccccc);
+            --ink-soft: var(--dp-muted, #888888);
+            --border: var(--dp-border, rgba(255,255,255,0.08));
         }
-        body[data-theme="dark"] .subject-card.checked { background: rgba(9,132,227,.08); }
-        body[data-theme="dark"] .task-row:hover { background: rgba(9,132,227,.05); }
+        body[data-theme="dark"] .planner-hero {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .planner-hero::after {
+            display: none !important;
+        }
+        body[data-theme="dark"] .planner-hero h2 {
+            color: var(--dp-text-strong, #ffffff) !important;
+        }
+        body[data-theme="dark"] .planner-hero p {
+            color: var(--dp-muted, #888888) !important;
+        }
+        body[data-theme="dark"] .planner-hero .date-nav-btn {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .planner-hero .date-nav-btn:hover {
+            background: var(--dp-elevated, #2a2a2a) !important;
+            color: #ffffff !important;
+        }
+        body[data-theme="dark"] .planner-hero input[type="date"] {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .planner-hero .btn {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .planner-hero .btn:hover {
+            background: var(--dp-elevated, #2a2a2a) !important;
+            color: #ffffff !important;
+        }
+        body[data-theme="dark"] .stat-card {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+            box-shadow: none !important;
+        }
+        body[data-theme="dark"] .stat-card .stat-icon-wrap {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+        }
+        body[data-theme="dark"] .stat-card .stat-label {
+            color: var(--dp-muted, #888888) !important;
+        }
+        body[data-theme="dark"] .stat-card .stat-sub {
+            color: var(--dp-muted, #888888) !important;
+        }
+        body[data-theme="dark"] .stat-card .stat-value.text-dark {
+            color: var(--dp-text-strong, #ffffff) !important;
+        }
+        body[data-theme="dark"] .subject-card {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .subject-card.checked {
+            border-color: var(--dp-primary, #007acc) !important;
+            background: rgba(0, 122, 204, 0.08) !important;
+        }
+        body[data-theme="dark"] .task-row:hover { background: rgba(255,255,255,.03); }
         body[data-theme="dark"] .task-row.done { background: rgba(0,184,148,.05); }
-        body[data-theme="dark"] .task-subject { background: rgba(9,132,227,.15); border-color: rgba(9,132,227,.25); color: #74b9ff; }
+        body[data-theme="dark"] .task-subject { background: rgba(0,122,204,.15); border-color: rgba(0,122,204,.25); color: #60a5fa; }
         body[data-theme="dark"] .task-row.done .task-subject { background: var(--paper); color: var(--ink-soft); border-color: var(--border); }
-        body[data-theme="dark"] .copy-box { border-color: rgba(9,132,227,.35); background: rgba(9,132,227,.05); }
+        body[data-theme="dark"] .copy-box {
+            border: 1px dashed var(--dp-border, rgba(255,255,255,0.15)) !important;
+            background: var(--dp-surface, #161616) !important;
+        }
+        body[data-theme="dark"] .copy-box p.fw-semibold {
+            color: var(--dp-primary, #007acc) !important;
+        }
+        body[data-theme="dark"] .copy-box p {
+            color: var(--dp-muted, #888888) !important;
+        }
+        body[data-theme="dark"] .add-form-card,
+        body[data-theme="dark"] .card-surface,
+        body[data-theme="dark"] .checklist-card {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .add-form-toggle {
+            border-bottom-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .time-group input[type="time"] {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .checklist-footer {
+            background: var(--dp-surface-2, #1b1b1b) !important;
+            border-top-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
         body[data-theme="dark"] .stat-progress { background: rgba(255,255,255,.06); }
-        body[data-theme="dark"] .report-day-card { background: var(--surface); }
+        body[data-theme="dark"] .report-day-card { background: var(--surface); border-color: var(--border); }
         body[data-theme="dark"] #plannerReportModal .modal-content { background: var(--surface); border-color: var(--border); }
 
-        /* ---- Responsive ---- */
+
+        /* ---- Responsive (Mobile Optimization: Compact & Easy View) ---- */
         @media (max-width: 767.98px) {
-            .planner-hero { padding: 20px; }
-            .add-form-body { padding: 16px; }
-            .task-row { padding: 10px 14px; }
-            .checklist-footer { padding: 12px 14px; }
-            .stat-card { padding: 18px; }
-            .stat-value { font-size: 1.7rem; }
+            .planner-hero { padding: 14px 16px; border-radius: 12px; }
+            .planner-hero h2 { font-size: 1.15rem; }
+            .planner-hero p { font-size: 0.75rem; }
+            .stat-card {
+                padding: 10px 8px !important;
+                border-radius: 10px !important;
+                text-align: center !important;
+                align-items: center !important;
+            }
+            .stat-icon-wrap {
+                width: 28px !important;
+                height: 28px !important;
+                font-size: 0.85rem !important;
+                margin-bottom: 4px !important;
+            }
+            .stat-label {
+                font-size: 0.62rem !important;
+                letter-spacing: 0.01em !important;
+                margin-bottom: 2px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                max-width: 100% !important;
+            }
+            .stat-value {
+                font-size: 1.15rem !important;
+                margin-bottom: 2px !important;
+                line-height: 1.1 !important;
+            }
+            .stat-progress {
+                height: 3px !important;
+                margin-bottom: 2px !important;
+            }
+            .stat-sub {
+                display: none !important;
+            }
+            .add-form-toggle {
+                padding: 12px 14px !important;
+            }
+            .add-form-toggle h6 {
+                font-size: 0.82rem !important;
+            }
+            .add-form-body {
+                padding: 14px !important;
+            }
+            .checklist-card .p-4 {
+                padding: 12px 14px !important;
+            }
+            .task-row {
+                padding: 8px 10px !important;
+                gap: 8px !important;
+            }
+            .task-time {
+                padding: 2px 6px !important;
+                font-size: 0.68rem !important;
+            }
+            .task-subject {
+                padding: 2px 8px !important;
+                font-size: 0.72rem !important;
+            }
+            .task-delete {
+                padding: 4px 6px !important;
+                font-size: 0.7rem !important;
+            }
+            .checklist-footer {
+                padding: 10px 14px !important;
+                gap: 8px !important;
+            }
+            .checklist-footer .footer-stats {
+                font-size: 0.7rem !important;
+                gap: 2px 8px !important;
+            }
+            .checklist-footer .btn {
+                width: 100% !important;
+                font-size: 0.78rem !important;
+                padding: 6px 12px !important;
+                justify-content: center !important;
+            }
+            .subject-card {
+                padding: 8px 10px !important;
+                border-radius: 8px !important;
+            }
+            .subject-card label {
+                gap: 6px !important;
+            }
+            .subject-card .form-label {
+                font-size: 0.76rem !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            .subject-card .form-check-input {
+                width: 14px !important;
+                height: 14px !important;
+                margin-top: 0 !important;
+                flex-shrink: 0 !important;
+            }
+            .time-group {
+                gap: 3px !important;
+                margin-top: 6px !important;
+            }
+            .time-group .time-sep {
+                font-size: 0.65rem !important;
+            }
+            .time-group input[type="time"] {
+                padding: 3px 4px !important;
+                font-size: 0.72rem !important;
+                border-radius: 6px !important;
+                min-width: 0 !important;
+            }
         }
     </style>
 EOD;
@@ -685,8 +884,8 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
     <?php endif; ?>
 
     <!-- Stat Cards -->
-    <div class="row g-3 mb-4 anim-up anim-1">
-        <div class="col-12 col-md-4">
+    <div class="row g-2 g-md-3 mb-3 mb-md-4 anim-up anim-1">
+        <div class="col-4 col-md-4">
             <div class="stat-card stat-accent h-100">
                 <div class="stat-icon-wrap"><i class="bi bi-pie-chart-fill"></i></div>
                 <div class="stat-label">Date Summary</div>
@@ -697,7 +896,7 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
                 <div class="stat-sub"><?php echo $doneToday; ?> / <?php echo $totalToday; ?> tasks done &middot; <?php echo $hoursDone; ?>h <?php echo $minutesDone; ?>m logged</div>
             </div>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-4 col-md-4">
             <div class="stat-card stat-success h-100">
                 <div class="stat-icon-wrap"><i class="bi bi-check-circle-fill"></i></div>
                 <div class="stat-label">Tasks Completed</div>
@@ -705,7 +904,7 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
                 <div class="stat-sub">Marked completed with <i class="bi bi-check-circle-fill" style="color:var(--success);"></i></div>
             </div>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-4 col-md-4">
             <div class="stat-card stat-neutral h-100">
                 <div class="stat-icon-wrap"><i class="bi bi-list-task"></i></div>
                 <div class="stat-label">Total Tasks</div>
@@ -726,10 +925,10 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
                 <span class="hero-badge" style="background:rgba(9,132,227,.08);border-color:rgba(9,132,227,.15);color:var(--accent);font-size:.75rem;padding:5px 14px;">
                     <?php echo htmlspecialchars(date('l, F j, Y', strtotime($selectedDate))); ?>
                 </span>
-                <i id="addFormChevron" class="bi bi-chevron-down" style="color:var(--ink-soft);transition:transform .2s ease;"></i>
+                <i id="addFormChevron" class="bi bi-chevron-down" style="color:var(--ink-soft);transition:transform .2s ease;<?= (!empty($errors) || !empty($copyFromDate)) ? 'transform:rotate(180deg);' : '' ?>"></i>
             </div>
         </div>
-        <div class="add-form-body show" id="addFormBody">
+        <div class="add-form-body <?= (!empty($errors) || !empty($copyFromDate)) ? 'show' : '' ?>" id="addFormBody">
 
             <!-- Copy from previous day -->
             <div class="copy-box mb-4">
@@ -779,7 +978,7 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
                             Select All
                         </label>
                     </div>
-                    <div class="row g-3">
+                    <div class="row g-2 g-md-3">
                         <?php foreach ($subjects as $subject): 
                             $sId = (int)$subject['id'];
                             $template = $copyTemplateMap[$sId] ?? null;
@@ -787,7 +986,7 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
                             $startValue = $template['start_time'] ?? '';
                             $endValue = $template['end_time'] ?? '';
                         ?>
-                            <div class="col-12 col-md-6 col-lg-4">
+                            <div class="col-6 col-md-6 col-lg-4">
                                 <div class="subject-card <?php echo $isChecked ? 'checked' : ''; ?>" id="card-<?php echo $sId; ?>">
                                     <label>
                                         <input type="checkbox" class="form-check-input subject-checkbox" name="subject_ids[]" value="<?php echo $sId; ?>" id="sub-<?php echo $sId; ?>" <?php echo $isChecked ? 'checked' : ''; ?> onchange="toggleTimeInputs(<?php echo $sId; ?>)">
@@ -834,79 +1033,38 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
             </span>
         </div>
 
-        <!-- Mobile View -->
-        <div class="d-block d-md-none">
+        <!-- Unified Responsive Checklist Tasks List -->
+        <div class="checklist-items-wrap">
             <?php foreach ($dayRows as $row): 
                 $isDone = ((int)$row['progress'] >= 100 || $row['status'] === 'Completed');
                 $formattedStart = !empty($row['start_time']) ? date('h:i A', strtotime($row['start_time'])) : '';
                 $formattedEnd   = !empty($row['end_time'])   ? date('h:i A', strtotime($row['end_time']))   : '';
+                $subjectName    = !empty($row['subject_name']) ? $row['subject_name'] : (!empty($row['topic']) ? $row['topic'] : 'Study Task');
             ?>
-                <div class="task-row <?php echo $isDone ? 'done' : ''; ?>">
-                    <form method="post" class="m-0 flex-shrink-0">
+                <div class="task-row <?= $isDone ? 'done' : '' ?>">
+                    <form method="post" class="m-0 flex-shrink-0 d-flex align-items-center">
                         <input type="hidden" name="action" value="toggle_done">
-                        <input type="hidden" name="planner_id" value="<?php echo (int)$row['id']; ?>">
-                        <input type="checkbox" class="form-check-input" name="done" value="1" <?php echo $isDone ? 'checked' : ''; ?> onchange="this.form.submit()" style="cursor:pointer;">
+                        <input type="hidden" name="planner_id" value="<?= (int)$row['id'] ?>">
+                        <input type="checkbox" class="form-check-input task-checkbox" name="done" value="1" <?= $isDone ? 'checked' : '' ?> onchange="this.form.submit()" style="cursor:pointer;" aria-label="Mark task done">
                     </form>
-                    <div class="flex-grow-1 min-w-0">
-                        <div class="mb-1">
-                            <span class="task-subject"><?php echo htmlspecialchars($row['subject_name']); ?></span>
-                        </div>
-                        <div class="task-time">
-                            <i class="bi bi-clock"></i>
-                            <?php echo htmlspecialchars($formattedStart . ' - ' . $formattedEnd); ?>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-column gap-1 flex-shrink-0 align-items-end">
-                        <a class="task-delete" href="#" onclick="openEditTask(<?php echo (int)$row['id']; ?>);return false;" title="Edit">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <a class="task-delete"
-                           href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
-                           onclick="return confirm('Delete this task?')">
-                            <i class="bi bi-trash3"></i>
-                        </a>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-
-            <?php if (!$dayRows): ?>
-                <div class="empty-state">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                    </svg>
-                    <p>No tasks planned for this day yet.</p>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Desktop View -->
-        <div class="d-none d-md-block">
-            <?php foreach ($dayRows as $row): 
-                $isDone = ((int)$row['progress'] >= 100 || $row['status'] === 'Completed');
-                $formattedStart = !empty($row['start_time']) ? date('h:i A', strtotime($row['start_time'])) : '';
-                $formattedEnd   = !empty($row['end_time'])   ? date('h:i A', strtotime($row['end_time']))   : '';
-            ?>
-                <div class="task-row <?php echo $isDone ? 'done' : ''; ?>">
-                    <form method="post" class="m-0 flex-shrink-0">
-                        <input type="hidden" name="action" value="toggle_done">
-                        <input type="hidden" name="planner_id" value="<?php echo (int)$row['id']; ?>">
-                        <input type="checkbox" class="form-check-input" name="done" value="1" <?php echo $isDone ? 'checked' : ''; ?> onchange="this.form.submit()" style="cursor:pointer;">
-                    </form>
-                    <div class="task-time" style="min-width:150px;">
+                    <div class="task-time flex-shrink-0">
                         <i class="bi bi-clock"></i>
-                        <?php echo htmlspecialchars($formattedStart . ' - ' . $formattedEnd); ?>
+                        <span><?= htmlspecialchars($formattedStart . ($formattedEnd ? ' - ' . $formattedEnd : '')) ?></span>
                     </div>
-                    <div class="flex-grow-1 min-w-0">
-                        <span class="task-subject"><?php echo htmlspecialchars($row['subject_name']); ?></span>
+                    <div class="flex-grow-1 min-w-0 task-meta-col">
+                        <span class="task-subject"><?= htmlspecialchars($subjectName) ?></span>
+                        <?php if (!empty($row['topic']) && $row['topic'] !== $subjectName): ?>
+                            <span class="task-topic-badge"><?= htmlspecialchars($row['topic']) ?></span>
+                        <?php endif; ?>
                     </div>
-                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                        <a class="task-delete" href="#" onclick="openEditTask(<?php echo (int)$row['id']; ?>);return false;" title="Edit">
-                            <i class="bi bi-pencil"></i> Edit
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0 task-actions">
+                        <a class="task-delete task-edit-action" href="#" onclick="openEditTask(<?= (int)$row['id'] ?>);return false;" title="Edit Task">
+                            <i class="bi bi-pencil"></i><span class="d-none d-sm-inline"> Edit</span>
                         </a>
-                        <a class="task-delete"
-                           href="planner.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$row['id']; ?>"
-                           onclick="return confirm('Delete this task?')">
-                            <i class="bi bi-trash3"></i> Delete
+                        <a class="task-delete task-del-action"
+                           href="planner.php?date=<?= urlencode($selectedDate) ?>&delete=<?= (int)$row['id'] ?>"
+                           onclick="return confirm('Delete this task?')" title="Delete Task">
+                            <i class="bi bi-trash3"></i><span class="d-none d-sm-inline"> Delete</span>
                         </a>
                     </div>
                 </div>

@@ -93,11 +93,12 @@ if ($studyRange === 'day') {
     $weekStart = date('Y-m-d', strtotime('monday this week'));
     $weekEnd = date('Y-m-d', strtotime('sunday this week'));
     $stmt = $conn->prepare("
-        SELECT day_name, SUM(GREATEST(TIME_TO_SEC(TIMEDIFF(end_time, start_time)), 0)) / 3600 AS hours
+        SELECT study_date, COALESCE(NULLIF(day_name, ''), DAYNAME(study_date)) AS day_name,
+               SUM(GREATEST(TIME_TO_SEC(TIMEDIFF(end_time, start_time)), 0)) / 3600 AS hours
         FROM planner
         WHERE user_id = ? AND study_date BETWEEN ? AND ?
         AND end_time > start_time
-        GROUP BY day_name
+        GROUP BY study_date, day_name
     ");
     $stmt->bind_param('iss', $userId, $weekStart, $weekEnd);
     $stmt->execute();
@@ -107,8 +108,9 @@ if ($studyRange === 'day') {
     $dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     $weeklyHours = array_fill_keys($dayOrder, 0.0);
     foreach ($weeklyRaw as $row) {
-        if (isset($weeklyHours[$row['day_name']])) {
-            $weeklyHours[$row['day_name']] = round((float) $row['hours'], 1);
+        $calcDay = !empty($row['study_date']) ? date('l', strtotime($row['study_date'])) : $row['day_name'];
+        if (isset($weeklyHours[$calcDay])) {
+            $weeklyHours[$calcDay] += round((float) $row['hours'], 1);
             $studyChart['totalHours'] += (float) $row['hours'];
         }
     }
@@ -120,10 +122,10 @@ if ($studyRange === 'day') {
 $subjectLabels = [];
 $subjectValues = [];
 $stmt = $conn->prepare("
-    SELECT s.name, COUNT(*) AS c
-    FROM planner p INNER JOIN subjects s ON s.id = p.subject_id
+    SELECT COALESCE(s.name, NULLIF(p.topic, ''), 'Study Task') AS name, COUNT(*) AS c
+    FROM planner p LEFT JOIN subjects s ON s.id = p.subject_id
     WHERE p.user_id = ?
-    GROUP BY s.name ORDER BY c DESC LIMIT 5
+    GROUP BY name ORDER BY c DESC LIMIT 5
 ");
 $stmt->bind_param('i', $userId);
 $stmt->execute();

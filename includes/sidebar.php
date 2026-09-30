@@ -11,7 +11,7 @@ $userInitial = strtoupper(substr($userName, 0, 1));
 <aside class="app-sidebar icon-rail" id="appSidebar" aria-label="Main Navigation">
     <!-- Top Daily Planner Brand Icon (Click to Open/Close Sidebar) -->
     <div class="sidebar-top">
-        <button type="button" class="sidebar-brand-toggle" id="sidebarBrandToggle" title="Click to Open or Close Sidebar" aria-label="Toggle Sidebar Navigation" data-tooltip="Daily Planner (Click to Expand)">
+        <button type="button" class="sidebar-brand-toggle" id="sidebarBrandToggle" title="Open Sidebar" aria-label="Toggle Sidebar Navigation" data-tooltip="Open Sidebar">
             <div class="brand-planner-icon-box">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -116,30 +116,28 @@ $userInitial = strtoupper(substr($userName, 0, 1));
             <span class="rail-label"><?= function_exists('t') ? t('settings') : 'Settings' ?></span>
         </a>
 
-        <!-- User Profile Card -->
-        <a href="setting.php?tab=account" class="rail-nav-link rail-user-link" data-tooltip="<?= htmlspecialchars($userName) ?> (Profile)" aria-label="<?= htmlspecialchars($userName) ?>">
-            <span class="rail-icon-wrap">
-                <?php if (!empty($userAvatar)): ?>
-                    <img src="<?= htmlspecialchars($userAvatar) ?>" alt="<?= htmlspecialchars($userName) ?>" class="rail-avatar-img">
-                <?php else: ?>
-                    <div class="rail-avatar-fallback"><?= htmlspecialchars($userInitial) ?></div>
-                <?php endif; ?>
-            </span>
-            <div class="rail-user-meta">
-                <span class="rail-user-name" title="<?= htmlspecialchars($userName) ?>"><?= htmlspecialchars($userName) ?></span>
-            </div>
-        </a>
-
-        <!-- Logout Button (triggers confirmation modal) -->
-        <a href="logout.php" class="rail-nav-link rail-logout-btn" data-dp-confirm="<?= htmlspecialchars(t('logout_confirm_title')) ?>|<?= htmlspecialchars(t('logout_confirm_message')) ?>|<?= htmlspecialchars(t('logout')) ?>" data-tooltip="<?= function_exists('t') ? t('logout') : 'Logout' ?>" aria-label="Log Out">
-            <span class="rail-icon-wrap">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- User Profile Card with Inline Logout Icon (Pic 2 & Pic 3 Request) -->
+        <div class="rail-user-row">
+            <a href="setting.php?tab=account" class="rail-user-link" data-tooltip="<?= htmlspecialchars($userName) ?> (Profile)" aria-label="<?= htmlspecialchars($userName) ?>">
+                <span class="rail-icon-wrap">
+                    <?php if (!empty($userAvatar)): ?>
+                        <img src="<?= htmlspecialchars($userAvatar) ?>" alt="<?= htmlspecialchars($userName) ?>" class="rail-avatar-img">
+                    <?php else: ?>
+                        <div class="rail-avatar-fallback"><?= htmlspecialchars($userInitial) ?></div>
+                    <?php endif; ?>
+                </span>
+                <div class="rail-user-meta">
+                    <span class="rail-user-name" title="<?= htmlspecialchars($userName) ?>"><?= htmlspecialchars($userName) ?></span>
+                </div>
+            </a>
+            <!-- Inline Logout Icon right next to user's name -->
+            <a href="logout.php" class="rail-inline-logout" data-dp-confirm="<?= htmlspecialchars(t('logout_confirm_title')) ?>|<?= htmlspecialchars(t('logout_confirm_message')) ?>|<?= htmlspecialchars(t('logout')) ?>" data-tooltip="<?= function_exists('t') ? t('logout') : 'Logout' ?>" aria-label="Log Out" title="Logout">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                     <polyline points="16 17 21 12 16 7"></polyline>
                     <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
-            </span>
-            <span class="rail-label"><?= function_exists('t') ? t('logout') : 'Logout' ?></span>
-        </a>
+            </a>
+        </div>
     </div>
 </aside>

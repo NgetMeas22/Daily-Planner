@@ -264,6 +264,36 @@ foreach ($repStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $item) {
     $reportByDate[$item['expense_date']][] = $item;
 }
 
+// Fetch active dates that have activity for quick navigation
+$activeDatesStmt = $conn->prepare("
+    SELECT expense_date, COUNT(*) as cnt,
+           SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as exp_sum,
+           SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as inc_sum
+    FROM expenses
+    WHERE user_id = ?
+    GROUP BY expense_date
+    ORDER BY expense_date DESC
+    LIMIT 12
+");
+$activeDatesStmt->bind_param('i', $userId);
+$activeDatesStmt->execute();
+$activeDates = $activeDatesStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$activeDatesStmt->close();
+$latestActiveDate = !empty($activeDates) ? $activeDates[0]['expense_date'] : null;
+
+// Fetch latest entries across all dates so user always sees data
+$recentAllStmt = $conn->prepare("
+    SELECT id, title, amount, expense_date, type
+    FROM expenses
+    WHERE user_id = ?
+    ORDER BY expense_date DESC, id DESC
+    LIMIT 20
+");
+$recentAllStmt->bind_param('i', $userId);
+$recentAllStmt->execute();
+$recentAllItems = $recentAllStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$recentAllStmt->close();
+
 // Daily totals (selected date), kept for the table footer
 $totalUsd = $dateExpenseTotal;
 $totalKhr = $totalUsd * $khrRate;
@@ -275,11 +305,12 @@ require_once __DIR__ . '/includes/layout.php';
 $pageExtraHead = <<<'EOD'
 <style>
         :root {
-            --paper: #F5F7FA;
-            --surface: #FFFFFF;
-            --ink: #1A1D2E;
-            --ink-soft: #6B7190;
-            --border: #E8EBF2;
+            --paper: var(--dp-bg, #F5F7FA);
+            --surface: var(--dp-surface, #FFFFFF);
+            --ink: var(--dp-text, #1A1D2E);
+            --ink-soft: var(--dp-muted, #6B7190);
+            --border: var(--dp-border, #E8EBF2);
+            --accent: var(--dp-primary, #3b82f6);
             --c-expenses: #FF6B6B;
             --c-income: #00B894;
             --radius: 16px;
@@ -309,7 +340,7 @@ $pageExtraHead = <<<'EOD'
 
         /* ---- Hero ---- */
         .expenses-hero {
-            background: linear-gradient(135deg, #1d557b 0%, #4e4376 50%, #e585ff 100%);
+            background: linear-gradient(135deg, var(--dp-primary, #1d557b) 0%, #312e81 100%);
             border-radius: var(--radius);
             padding: 28px 32px;
             color: #fff;
@@ -702,55 +733,159 @@ $pageExtraHead = <<<'EOD'
         .report-day-card:hover { box-shadow: var(--shadow-sm); transform: translateX(2px); }
         .report-day-card:last-child { margin-bottom: 0; }
 
-        /* ---- Responsive ---- */
+        /* ---- Responsive (Mobile Optimization: Compact & Easy View) ---- */
         @media (max-width: 767.98px) {
-            .expenses-hero { padding: 20px; }
-            .add-form-body { padding: 16px; }
+            .expenses-hero { padding: 14px 16px; border-radius: 12px; }
+            .expenses-hero h2 { font-size: 1.15rem; }
+            .expenses-hero p { font-size: 0.75rem; }
+            .stat-cards-grid-4 {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 8px !important;
+            }
+            .stat-card {
+                padding: 10px 12px !important;
+                border-radius: 10px !important;
+            }
+            .stat-label-title {
+                font-size: 0.62rem !important;
+                margin-bottom: 2px !important;
+                letter-spacing: 0.02em !important;
+            }
+            .stat-val-text {
+                font-size: 1.15rem !important;
+                margin: 0 !important;
+                line-height: 1.1 !important;
+            }
+            .stat-income-sub {
+                font-size: 0.7rem !important;
+                margin-top: 1px !important;
+            }
+            .stat-footer-sub {
+                display: none !important;
+            }
+            .btn-report-pill {
+                font-size: 0.65rem !important;
+                padding: 1px 6px !important;
+            }
+            .add-form-toggle {
+                padding: 12px 14px !important;
+            }
+            .add-form-toggle h6 {
+                font-size: 0.82rem !important;
+            }
+            .add-form-body {
+                padding: 14px !important;
+            }
+            .entries-header {
+                padding: 12px 14px !important;
+            }
+            .entry-item {
+                padding: 8px 12px !important;
+            }
+            .entries-footer {
+                padding: 10px 14px !important;
+                gap: 6px !important;
+            }
         }
 
-        /* ---- Dark Mode ---- */
+        /* ---- Dark Mode (Matte Dark Match) ---- */
         body[data-theme="dark"] {
-            --paper: #0F1219;
-            --surface: #181D2A;
-            --ink: #E4E6EF;
-            --ink-soft: #8B90A5;
-            --border: #2A2F3E;
-            --shadow-sm: 0 1px 3px rgba(0,0,0,.15);
-            --shadow-md: 0 4px 16px rgba(0,0,0,.25);
+            --paper: var(--dp-bg, #101010);
+            --surface: var(--dp-surface, #161616);
+            --ink: var(--dp-text, #cccccc);
+            --ink-soft: var(--dp-muted, #888888);
+            --border: var(--dp-border, rgba(255,255,255,0.08));
+            --shadow-sm: 0 1px 3px rgba(0,0,0,.2);
+            --shadow-md: 0 4px 16px rgba(0,0,0,.4);
             background: var(--paper);
             color: var(--ink);
         }
+        body[data-theme="dark"] .expenses-hero {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .expenses-hero::after { display: none !important; }
+        body[data-theme="dark"] .expenses-hero h2 { color: var(--dp-text-strong, #ffffff) !important; }
+        body[data-theme="dark"] .expenses-hero p { color: var(--dp-muted, #888888) !important; }
+        body[data-theme="dark"] .expenses-hero .date-nav-btn {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .expenses-hero input[type="date"] {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
+        body[data-theme="dark"] .expenses-hero .btn {
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.12)) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
         body[data-theme="dark"] .form-control,
         body[data-theme="dark"] .form-select {
-            background: var(--surface);
-            color: var(--ink);
-            border-color: var(--border);
+            background: var(--dp-surface-2, #1f1f1f);
+            color: var(--dp-text, #cccccc);
+            border-color: var(--dp-border, rgba(255,255,255,0.08));
         }
         body[data-theme="dark"] .form-control:focus,
         body[data-theme="dark"] .form-select:focus {
-            background: var(--surface);
-            color: var(--ink);
+            background: var(--dp-surface-2, #1f1f1f);
+            color: #ffffff;
+            border-color: var(--dp-primary, #007acc);
         }
         body[data-theme="dark"] .stat-card,
         body[data-theme="dark"] .add-form-card,
         body[data-theme="dark"] .entries-card,
-        body[data-theme="dark"] #reportModal .modal-content {
-            background: var(--surface);
-            border-color: var(--border);
+        body[data-theme="dark"] #reportModal .modal-content,
+        body[data-theme="dark"] #editEntryModal .modal-content {
+            background: var(--dp-surface, #161616) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .entries-header {
+            border-bottom: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .entries-footer {
+            background: var(--dp-surface-2, #1b1b1b) !important;
+            border-top: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+        }
+        body[data-theme="dark"] .item-count-badge {
+            background: var(--dp-surface-2, #1f1f1f);
+            border-color: var(--dp-border, rgba(255,255,255,0.08));
+            color: var(--dp-muted, #888888);
+        }
+        body[data-theme="dark"] .entry-item {
+            border-bottom-color: var(--dp-border, rgba(255,255,255,0.08));
         }
         body[data-theme="dark"] .entry-item:hover { background: rgba(255,255,255,.03); }
-        body[data-theme="dark"] .btn-cancel {
-            background: var(--surface);
-            color: var(--ink-soft);
-            border-color: var(--border);
+        body[data-theme="dark"] table tbody tr {
+            border-bottom-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
+        body[data-theme="dark"] table tbody tr:hover { background: rgba(255,255,255,.03); }
+        body[data-theme="dark"] .btn-cancel,
         body[data-theme="dark"] .btn-entry-delete,
         body[data-theme="dark"] .btn-entry-edit {
-            background: var(--surface);
-            border-color: var(--border);
+            background: var(--dp-surface-2, #1f1f1f);
+            color: var(--dp-muted, #888888);
+            border-color: var(--dp-border, rgba(255,255,255,0.1));
         }
-        body[data-theme="dark"] .report-summary-card { background: var(--surface); }
-        body[data-theme="dark"] .report-day-card { background: var(--surface); }
+        body[data-theme="dark"] .btn-entry-delete:hover {
+            color: #FF6B6B;
+            border-color: #FF6B6B;
+            background: rgba(255,107,107,.1);
+        }
+        body[data-theme="dark"] .btn-entry-edit:hover {
+            color: #00B894;
+            border-color: #00B894;
+            background: rgba(0,184,148,.1);
+        }
+        body[data-theme="dark"] .report-summary-card,
+        body[data-theme="dark"] .report-day-card {
+            background: var(--dp-surface-2, #1a1a1a);
+            border-color: var(--dp-border, rgba(255,255,255,0.08));
+        }
     </style>
 EOD;
 
@@ -805,6 +940,7 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
             <i class="bi bi-check-circle-fill me-1"></i><?php echo htmlspecialchars($success); ?>
         </div>
     <?php endif; ?>
+
 
     <!-- Stats Cards (Pic 3 Match: All 4 in 1 Single Horizontal Row) -->
     <div class="stat-cards-grid-4 mb-4 anim-up anim-1">
@@ -865,9 +1001,9 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
     <div class="add-form-card mb-4 anim-up anim-2">
         <div class="add-form-toggle" id="budgetFormToggle">
             <h6><i class="bi bi-piggy-bank" style="color:var(--c-income);"></i> Monthly Budget</h6>
-            <svg id="budgetChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;"><path d="M6 9l6 6 6-6"/></svg>
+            <svg id="budgetChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;transform:rotate(-90deg);"><path d="M6 9l6 6 6-6"/></svg>
         </div>
-        <div class="add-form-wrap" id="budgetFormWrap">
+        <div class="add-form-wrap collapsed" id="budgetFormWrap">
         <div class="add-form-body" id="budgetFormBody">
             <p class="small mb-3" style="color:var(--ink-soft);">Set a monthly limit. Income tops it up; remaining funds roll over.</p>
             <form method="post" class="d-flex flex-wrap align-items-end gap-3">
@@ -886,9 +1022,9 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
     <div class="add-form-card mb-4 anim-up anim-3">
         <div class="add-form-toggle" id="expenseFormToggle">
             <h6><i class="bi bi-dash-circle" style="color:var(--c-expenses);"></i> Add Expense <span class="type-badge-expense ms-1" style="font-size:.65rem;">ចំណាយ</span></h6>
-            <svg id="expenseChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;"><path d="M6 9l6 6 6-6"/></svg>
+            <svg id="expenseChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;transform:rotate(-90deg);"><path d="M6 9l6 6 6-6"/></svg>
         </div>
-        <div class="add-form-wrap" id="expenseFormWrap">
+        <div class="add-form-wrap collapsed" id="expenseFormWrap">
         <div class="add-form-body" id="expenseFormBody">
             <form method="post">
                 <input type="hidden" name="add_expense" value="1">
@@ -922,9 +1058,9 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
     <div class="add-form-card mb-4 anim-up anim-4">
         <div class="add-form-toggle" id="incomeFormToggle">
             <h6><i class="bi bi-plus-circle" style="color:var(--c-income);"></i> Add Income <span class="type-badge-income ms-1" style="font-size:.65rem;">ចំណូល</span></h6>
-            <svg id="incomeChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;"><path d="M6 9l6 6 6-6"/></svg>
+            <svg id="incomeChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--ink-soft);transition:transform .3s ease;transform:rotate(-90deg);"><path d="M6 9l6 6 6-6"/></svg>
         </div>
-        <div class="add-form-wrap" id="incomeFormWrap">
+        <div class="add-form-wrap collapsed" id="incomeFormWrap">
         <div class="add-form-body" id="incomeFormBody">
             <form method="post">
                 <input type="hidden" name="add_income" value="1">
@@ -954,61 +1090,66 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
         </div>
     </div>
 
-    <!-- Entries Card: Expenses for Selected Date -->
+    <!-- Unified Transactions Card with Selected Date Summary at the Bottom -->
     <div class="entries-card mb-4 anim-up anim-5">
-        <div class="entries-header">
+        <div class="entries-header d-flex justify-content-between align-items-center">
             <div>
-                <h6 class="mb-0 fw-bold"><i class="bi bi-receipt-cutoff me-1" style="color:var(--c-expenses);"></i> Expenses for <?php echo htmlspecialchars($selectedDate); ?></h6>
-                <small style="color:var(--ink-soft);">Track daily expenses &amp; income in USD and KHR</small>
+                <h6 class="mb-0 fw-bold"><i class="bi bi-clock-history me-1" style="color:var(--accent);"></i> All Recent Transactions</h6>
+                <small style="color:var(--ink-soft);">Showing latest activity across all dates in your account</small>
             </div>
-            <span class="item-count-badge"><?php echo count($dateItems); ?>items</span>
+            <span class="item-count-badge"><?php echo count($recentAllItems); ?> items</span>
         </div>
 
         <!-- Mobile View -->
         <div class="d-block d-md-none">
-            <?php if ($dateItems): ?>
-                <?php foreach ($dateItems as $item):
-                    $isIncome = $item['type'] === 'income';
-                    $amountUsd = (float)$item['amount'];
-                    $amountKhr = $amountUsd * $khrRate;
-                    $sign = $isIncome ? '+' : '-';
-                    $amountColor = $isIncome ? '#00B894' : '#FF6B6B';
-                    $badgeClass = $isIncome ? 'type-badge-income' : 'type-badge-expense';
-                    $badgeLabel = $isIncome ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
+            <?php if (!empty($recentAllItems)): ?>
+                <?php foreach ($recentAllItems as $rItem):
+                    $isInc = ($rItem['type'] === 'income');
+                    $rUsd = (float)$rItem['amount'];
+                    $rKhr = $rUsd * $khrRate;
+                    $rBadgeClass = $isInc ? 'type-badge-income' : 'type-badge-expense';
+                    $rBadgeLabel = $isInc ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
+                    $rColor = $isInc ? '#00B894' : '#FF6B6B';
+                    $rSign = $isInc ? '+' : '-';
+                    $isSelectedRow = ($rItem['expense_date'] === $selectedDate);
                 ?>
-                    <div class="entry-item">
-                        <div class="d-flex justify-content-between align-items-start gap-3">
-                            <div class="min-w-0 flex-grow-1">
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="fw-semibold small" style="color:var(--ink);"><?php echo htmlspecialchars($item['title']); ?></span>
-                                    <span class="<?php echo $badgeClass; ?>"><?php echo $badgeLabel; ?></span>
-                                </div>
-                                <div class="d-flex align-items-center gap-1 mt-1" style="font-size:.75rem;color:var(--ink-soft);">
-                                    <i class="bi bi-calendar3"></i>
-                                    <span><?php echo htmlspecialchars($item['expense_date']); ?></span>
-                                </div>
+                    <div class="entry-item d-flex justify-content-between align-items-center py-2 px-3" <?php if ($isSelectedRow): ?>style="background:rgba(99,102,241,0.04);"<?php endif; ?>>
+                        <div class="min-w-0 flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="fw-semibold small text-truncate" style="color:var(--ink);max-width:140px;"><?php echo htmlspecialchars($rItem['title']); ?></span>
+                                <span class="<?php echo $rBadgeClass; ?>"><?php echo $rBadgeLabel; ?></span>
+                                <?php if ($isSelectedRow): ?>
+                                    <span class="badge" style="font-size:.62rem;background:var(--accent);color:#fff;border-radius:999px;padding:2px 6px;">Selected</span>
+                                <?php endif; ?>
                             </div>
-                            <div class="text-end flex-shrink-0">
-                                <div class="fw-semibold small" style="color:<?php echo $amountColor; ?>;"><?php echo $sign; ?>$<?php echo number_format($amountUsd, 2); ?></div>
-                                <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $sign; ?><?php echo number_format($amountKhr); ?> ៛</div>
+                            <div class="d-flex align-items-center gap-1 mt-1" style="font-size:.72rem;color:var(--ink-soft);">
+                                <i class="bi bi-calendar3" style="font-size:.65rem;"></i>
+                                <a href="expenses.php?date=<?php echo urlencode($rItem['expense_date']); ?>" class="text-decoration-none" style="color:var(--accent);">
+                                    <?php echo htmlspecialchars($rItem['expense_date']); ?>
+                                </a>
                             </div>
                         </div>
-                        <div class="d-flex justify-content-end gap-2 mt-2 pt-2" style="border-top:1px solid var(--border);">
-                            <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;">
-                                <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
-                            </a>
-                            <a class="btn-entry-delete"
-                               href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
-                               onclick="return confirm('Delete this entry?')">
-                                <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
-                            </a>
+                        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-2">
+                            <div class="text-end">
+                                <div class="fw-bold small" style="color:<?php echo $rColor; ?>;font-size:.85rem;line-height:1.1;"><?php echo $rSign; ?>$<?php echo number_format($rUsd, 2); ?></div>
+                                <div style="font-size:.68rem;color:var(--ink-soft);"><?php echo $rSign; ?><?php echo number_format($rKhr); ?> ៛</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <a class="btn-entry-edit p-1" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;" href="#" onclick="openEditEntry(<?php echo (int)$rItem['id']; ?>);return false;" title="Edit">
+                                    <i class="bi bi-pencil" style="font-size:.72rem;"></i>
+                                </a>
+                                <a class="btn-entry-delete p-1" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;"
+                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$rItem['id']; ?>"
+                                   onclick="return confirm('Delete this entry?')" title="Delete">
+                                    <i class="bi bi-trash3" style="font-size:.72rem;"></i>
+                                </a>
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             <?php else: ?>
-                <div class="empty-state">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    <p>No expenses or income logged for this date.</p>
+                <div class="empty-state py-4 text-center">
+                    <p class="mb-0 small" style="color:var(--ink-soft);">No transactions recorded yet in your account.</p>
                 </div>
             <?php endif; ?>
         </div>
@@ -1022,48 +1163,59 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                         <th class="px-4 py-3 fw-semibold" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Type</th>
                         <th class="px-4 py-3 fw-semibold" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Date</th>
                         <th class="px-4 py-3 fw-semibold text-end" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Amount</th>
-                        <th class="px-4 py-3 fw-semibold text-end" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);width:120px;">Action</th>
+                        <th class="px-4 py-3 fw-semibold text-end" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);width:140px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($dateItems as $item):
-                        $isIncome = $item['type'] === 'income';
-                        $amountUsd = (float)$item['amount'];
-                        $amountKhr = $amountUsd * $khrRate;
-                        $sign = $isIncome ? '+' : '-';
-                        $amountColor = $isIncome ? '#00B894' : '#FF6B6B';
-                        $badgeClass = $isIncome ? 'type-badge-income' : 'type-badge-expense';
-                        $badgeLabel = $isIncome ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
-                    ?>
-                        <tr style="border-bottom:1px solid var(--border);">
-                            <td class="px-4 py-3 fw-medium align-middle" style="color:var(--ink);"><?php echo htmlspecialchars($item['title']); ?></td>
-                            <td class="px-4 py-3 align-middle"><span class="<?php echo $badgeClass; ?>"><?php echo $badgeLabel; ?></span></td>
-                            <td class="px-4 py-3 align-middle" style="color:var(--ink-soft);font-size:.8rem;"><?php echo htmlspecialchars($item['expense_date']); ?></td>
-                            <td class="px-4 py-3 text-end align-middle">
-                                <div class="fw-semibold" style="color:<?php echo $amountColor; ?>;"><?php echo $sign; ?>$<?php echo number_format($amountUsd, 2); ?></div>
-                                <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $sign; ?><?php echo number_format($amountKhr); ?> ៛</div>
-                            </td>
-                            <td class="px-4 py-3 text-end align-middle">
-                                <div class="d-inline-flex align-items-center gap-2">
-                                    <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;">
-                                        <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
+                    <?php if (!empty($recentAllItems)): ?>
+                        <?php foreach ($recentAllItems as $rItem): 
+                            $isInc = ($rItem['type'] === 'income');
+                            $rUsd = (float)$rItem['amount'];
+                            $rKhr = $rUsd * $khrRate;
+                            $rBadgeClass = $isInc ? 'type-badge-income' : 'type-badge-expense';
+                            $rBadgeLabel = $isInc ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
+                            $rColor = $isInc ? '#00B894' : '#FF6B6B';
+                            $rSign = $isInc ? '+' : '-';
+                            $isSelectedRow = ($rItem['expense_date'] === $selectedDate);
+                        ?>
+                            <tr style="border-bottom:1px solid var(--border);<?php if ($isSelectedRow): ?>background:rgba(99,102,241,0.035);<?php endif; ?>">
+                                <td class="px-4 py-3 fw-medium align-middle" style="color:var(--ink);">
+                                    <?php echo htmlspecialchars($rItem['title']); ?>
+                                    <?php if ($isSelectedRow): ?>
+                                        <span class="badge ms-1" style="font-size:.62rem;background:var(--accent);color:#fff;border-radius:999px;">Selected Date</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-3 align-middle"><span class="<?php echo $rBadgeClass; ?>"><?php echo $rBadgeLabel; ?></span></td>
+                                <td class="px-4 py-3 align-middle">
+                                    <a href="expenses.php?date=<?php echo urlencode($rItem['expense_date']); ?>" class="text-decoration-none fw-semibold" style="color:var(--accent);font-size:.8rem;">
+                                        <i class="bi bi-calendar3 me-1"></i><?php echo htmlspecialchars($rItem['expense_date']); ?>
                                     </a>
-                                    <a class="btn-entry-delete"
-                                       href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
-                                       onclick="return confirm('Delete this entry?')">
-                                        <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-
-                    <?php if (!$dateItems): ?>
+                                </td>
+                                <td class="px-4 py-3 text-end align-middle">
+                                    <div class="fw-semibold" style="color:<?php echo $rColor; ?>;"><?php echo $rSign; ?>$<?php echo number_format($rUsd, 2); ?></div>
+                                    <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $rSign; ?><?php echo number_format($rKhr); ?> ៛</div>
+                                </td>
+                                <td class="px-4 py-3 text-end align-middle">
+                                    <div class="d-inline-flex align-items-center gap-2">
+                                        <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$rItem['id']; ?>);return false;">
+                                            <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
+                                        </a>
+                                        <a class="btn-entry-delete"
+                                           href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$rItem['id']; ?>"
+                                           onclick="return confirm('Delete this entry?')">
+                                            <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
                         <tr>
                             <td colspan="5" class="text-center py-5">
                                 <div class="empty-state">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <p>No expenses or income logged for this date.</p>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;color:var(--ink-soft);opacity:.6;margin-bottom:12px;"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <h6 class="fw-bold mb-1" style="color:var(--ink);">No transactions recorded yet</h6>
+                                    <p class="mb-0 small" style="color:var(--ink-soft);">Add an expense or income entry above to start tracking.</p>
                                 </div>
                             </td>
                         </tr>
@@ -1072,19 +1224,37 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
             </table>
         </div>
 
-        <?php if ($dateItems): ?>
-            <div class="entries-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div class="d-flex flex-wrap gap-3">
-                    <span class="small fw-medium" style="color:var(--ink-soft);">Expenses: <span class="fw-bold" style="color:#FF6B6B;">-$<?php echo number_format($totalUsd, 2); ?></span> <span style="color:var(--ink-soft);">(-<?php echo number_format($totalKhr); ?> ៛)</span></span>
-                    <span class="small fw-medium" style="color:var(--ink-soft);">Income: <span class="fw-bold" style="color:#00B894;">+$<?php echo number_format($incomeUsd, 2); ?></span> <span style="color:var(--ink-soft);">(+<?php echo number_format($incomeKhr); ?> ៛)</span></span>
-                </div>
-                <div class="text-end">
-                    <span class="fw-bold" style="color:<?php echo $dateNet >= 0 ? '#00B894' : '#FF6B6B'; ?>;">
+        <!-- Expenses for Selected Date (Bottom Strip / ទៅក្រោម) -->
+        <div class="entries-footer d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="fw-bold" style="color:var(--ink);font-size:.85rem;">
+                    <i class="bi bi-receipt-cutoff me-1" style="color:var(--c-expenses);"></i> Expenses for <?php echo htmlspecialchars($selectedDate); ?>:
+                </span>
+                <span class="item-count-badge" style="background:var(--surface);"><?php echo count($dateItems); ?> <?php echo count($dateItems) === 1 ? 'item' : 'items'; ?></span>
+            </div>
+            <?php if ($dateItems): ?>
+                <div class="d-flex flex-wrap align-items-center gap-3 ms-auto">
+                    <span class="small fw-medium" style="color:var(--ink-soft);">
+                        Expenses: <span class="fw-bold" style="color:#FF6B6B;">-$<?php echo number_format($totalUsd, 2); ?></span> <span style="color:var(--ink-soft);font-size:.74rem;">(-<?php echo number_format($totalKhr); ?> ៛)</span>
+                    </span>
+                    <span class="small fw-medium" style="color:var(--ink-soft);">
+                        Income: <span class="fw-bold" style="color:#00B894;">+$<?php echo number_format($incomeUsd, 2); ?></span> <span style="color:var(--ink-soft);font-size:.74rem;">(+<?php echo number_format($incomeKhr); ?> ៛)</span>
+                    </span>
+                    <span class="fw-bold px-2 py-1 rounded" style="background:<?php echo $dateNet >= 0 ? 'rgba(0,184,148,0.1)' : 'rgba(255,107,107,0.1)'; ?>;color:<?php echo $dateNet >= 0 ? '#00B894' : '#FF6B6B'; ?>;font-size:.85rem;">
                         Net: <?php echo $dateNet >= 0 ? '+' : '-'; ?>$<?php echo number_format(abs($dateNet), 2); ?>
                     </span>
                 </div>
-            </div>
-        <?php endif; ?>
+            <?php else: ?>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="small" style="color:var(--ink-soft);">No transactions logged for <?php echo htmlspecialchars($selectedDate); ?>.</span>
+                    <?php if ($latestActiveDate && $latestActiveDate !== $selectedDate): ?>
+                        <a href="expenses.php?date=<?php echo urlencode($latestActiveDate); ?>" class="btn btn-sm btn-outline-soft" style="font-size:.75rem;padding:3px 12px;border-radius:999px;">
+                            <i class="bi bi-arrow-right-circle me-1" style="color:var(--accent);"></i>Jump to <?php echo htmlspecialchars($latestActiveDate); ?>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
 
 </div>
@@ -1240,7 +1410,7 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
     const REPORT_DATA = <?php echo json_encode($reportByDate, JSON_UNESCAPED_UNICODE); ?>;
     const ENTRY_DATA = <?php
         $entryById = [];
-        foreach ($dateItems as $e) {
+        foreach (array_merge($dateItems, $recentAllItems) as $e) {
             $entryById[(int) $e['id']] = [
                 'id' => (int) $e['id'],
                 'title' => $e['title'] ?? '',

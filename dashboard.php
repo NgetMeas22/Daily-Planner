@@ -104,7 +104,7 @@ $monthStart = date('Y-m-01');
 $monthEnd   = date('Y-m-t');
 $stmt = $conn->prepare("
     SELECT
-      (SELECT COUNT(*) FROM subjects WHERE user_id = ?) AS subjects,
+      (SELECT COUNT(*) FROM subjects WHERE user_id = ? OR user_id IS NULL) AS subjects,
       (SELECT COUNT(*) FROM planner  WHERE user_id = ?) AS planner,
       (SELECT COUNT(*) FROM goals    WHERE user_id = ?) AS goals,
       (SELECT COUNT(*) FROM expenses WHERE user_id = ?) AS expenses,
@@ -183,8 +183,9 @@ $expenses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $stmt = $conn->prepare("
-    SELECT p.id, p.study_date, p.start_time, p.end_time, p.topic, s.name AS subject_name
-    FROM planner p INNER JOIN subjects s ON s.id = p.subject_id
+    SELECT p.id, p.study_date, p.start_time, p.end_time, p.topic,
+           COALESCE(s.name, NULLIF(p.topic, ''), 'Study Task') AS subject_name
+    FROM planner p LEFT JOIN subjects s ON s.id = p.subject_id
     WHERE p.user_id = ? ORDER BY p.id DESC LIMIT 5
 ");
 $stmt->bind_param('i', $userId);
@@ -193,7 +194,7 @@ $plannerRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $allSubjects = [];
-$stmt = $conn->prepare("SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC");
+$stmt = $conn->prepare("SELECT id, name FROM subjects WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC");
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $allSubjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -364,118 +365,7 @@ layout_header('Dashboard', 'dashboard', $extraHead);
         </div>
     </div>
 
-    <!-- Quick-Add Forms -->
-    <div class="section-header anim-up">
-        <h5>Quick Add</h5>
-        <div class="section-line"></div>
-    </div>
-    <div class="row g-3 mb-4">
-        <!-- Add Subject -->
-        <div class="col-md-6 col-lg-3 anim-up anim-up-1">
-            <div class="panel panel-subjects h-100">
-                <div class="panel-accent accent-subjects"></div>
-                <div class="panel-body">
-                    <button class="quick-add-toggle" type="button" data-target="form-subject" aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                        Add Subject
-                    </button>
-                    <div class="quick-add-form" id="form-subject">
-                        <form method="post" class="vstack gap-2 mt-3">
-                            <input type="hidden" name="action" value="add_subject">
-                            <input class="form-control" name="name" placeholder="Subject name" required>
-                            <input class="form-control" name="description" placeholder="Description (optional)">
-                            <button class="btn btn-save btn-subjects w-100">Save Subject</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Add Goal -->
-        <div class="col-md-6 col-lg-3 anim-up anim-up-2">
-            <div class="panel panel-goals h-100">
-                <div class="panel-accent accent-goals"></div>
-                <div class="panel-body">
-                    <button class="quick-add-toggle" type="button" data-target="form-goal" aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                        Add Goal
-                    </button>
-                    <div class="quick-add-form" id="form-goal">
-                        <form method="post" class="vstack gap-2 mt-3">
-                            <input type="hidden" name="action" value="add_goal">
-                            <input class="form-control" name="goal_name" placeholder="Goal name" required>
-                            <input class="form-control" type="number" name="target_hours" placeholder="Target hours" min="1" required>
-                            <input class="form-control" type="date" name="deadline">
-                            <button class="btn btn-save btn-goals w-100">Save Goal</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Add Expense -->
-        <div class="col-md-6 col-lg-3 anim-up anim-up-3">
-            <div class="panel panel-expenses h-100">
-                <div class="panel-accent accent-expenses"></div>
-                <div class="panel-body">
-                    <button class="quick-add-toggle" type="button" data-target="form-expense" aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                        Add Expense
-                    </button>
-                    <div class="quick-add-form" id="form-expense">
-                        <form method="post" class="vstack gap-2 mt-3">
-                            <input type="hidden" name="action" value="add_expense">
-                            <input class="form-control" name="title" placeholder="Title" required>
-                            <input class="form-control" name="category" placeholder="Category (optional)">
-                            <input class="form-control" type="number" step="0.01" name="amount" placeholder="Amount ($)" min="0.01" required>
-                            <input class="form-control" type="date" name="expense_date" required>
-                            <button class="btn btn-save btn-expenses w-100">Save Expense</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Add Planner -->
-        <div class="col-md-6 col-lg-3 anim-up anim-up-4">
-            <div class="panel panel-planner h-100">
-                <div class="panel-accent accent-planner"></div>
-                <div class="panel-body">
-                    <button class="quick-add-toggle" type="button" data-target="form-planner" aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                        Add Planner
-                    </button>
-                    <div class="quick-add-form" id="form-planner">
-                        <form method="post" class="vstack gap-2 mt-3">
-                            <input type="hidden" name="action" value="add_planner">
-                            <select class="form-select" name="subject_id" required>
-                                <option value="">Select subject</option>
-                                <?php foreach ($allSubjects as $sub): ?>
-                                    <option value="<?= $sub['id'] ?>"><?= htmlspecialchars($sub['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <div class="row g-1">
-                                <div class="col-6"><input type="date" class="form-control" name="study_date" required></div>
-                                <div class="col-6">
-                                    <select class="form-select" name="day_name" required>
-                                        <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day): ?>
-                                            <option value="<?= $day ?>"><?= substr($day, 0, 3) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="row g-1">
-                                <div class="col-6"><input type="time" class="form-control" name="start_time" required></div>
-                                <div class="col-6"><input type="time" class="form-control" name="end_time" required></div>
-                            </div>
-                            <input type="text" class="form-control" name="topic" placeholder="Topic" required>
-                            <button class="btn btn-save btn-planner w-100">Save Planner</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Activity Feed -->
     <div class="section-header anim-up">

@@ -42,42 +42,75 @@ if (!function_exists('layout_header')) {
     function layout_header(string $pageTitle = 'Dashboard', string $activePage = 'dashboard', string $extraHead = ''): void
     {
         $currentLang = $_SESSION['lang'] ?? 'en';
-        $themeMode   = function_exists('current_theme') ? current_theme() : ($_SESSION['theme'] ?? 'dark');
+        $themeSettings = function_exists('get_user_theme_settings') ? get_user_theme_settings() : [
+            'theme_mode'     => 'dark',
+            'theme_preset'   => 'default_dark',
+            'accent_color'   => '#007acc',
+            'contrast_style' => 'default',
+            'dark_bg_color'  => '#101010',
+            'dark_fg_color'  => '#cccccc',
+        ];
+        $themeMode     = $themeSettings['theme_mode'];
+        $themePreset   = $themeSettings['theme_preset'];
+        $accentColor   = $themeSettings['accent_color'];
+        $contrastStyle = $themeSettings['contrast_style'];
+        $darkBgColor   = $themeSettings['dark_bg_color'];
+        $darkFgColor   = $themeSettings['dark_fg_color'];
         ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($currentLang) ?>" data-theme="<?= htmlspecialchars($themeMode) ?>">
+<html lang="<?= htmlspecialchars($currentLang) ?>" data-theme="<?= htmlspecialchars($themeMode) ?>" data-preset="<?= htmlspecialchars($themePreset) ?>" data-contrast="<?= htmlspecialchars($contrastStyle) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <title><?= htmlspecialchars($pageTitle) ?> — Daily Planner</title>
     
-    <!-- Prevent theme flash (FOUC), restore accent, preset and sidebar state -->
+    <!-- Prevent theme flash (FOUC), restore accent, preset, contrast, custom colors, and sidebar state -->
     <script>
         (function() {
             var t = '<?= $themeMode ?>';
+            var preset = '<?= $themePreset ?>';
+            var contrast = '<?= $contrastStyle ?>';
+            var acc = '<?= $accentColor ?>';
+            var darkBg = '<?= $darkBgColor ?>';
+            var darkFg = '<?= $darkFgColor ?>';
             try {
                 var stored = localStorage.getItem('dp_theme');
                 if (stored === 'dark' || stored === 'light' || stored === 'system') t = stored;
-                var acc = localStorage.getItem('dp_accent');
-                if (acc) document.documentElement.style.setProperty('--dp-primary', acc);
-                var preset = localStorage.getItem('dp_preset');
-                if (preset === 'midnight') {
-                    document.documentElement.style.setProperty('--dp-bg', '#0b1120');
-                    document.documentElement.style.setProperty('--dp-surface', '#111827');
-                } else if (preset === 'amoled') {
-                    document.documentElement.style.setProperty('--dp-bg', '#000000');
-                    document.documentElement.style.setProperty('--dp-surface', '#0a0a0a');
-                } else if (preset === 'slate') {
-                    document.documentElement.style.setProperty('--dp-bg', '#0f172a');
-                    document.documentElement.style.setProperty('--dp-surface', '#1e293b');
-                }
+                var stAcc = localStorage.getItem('dp_accent');
+                if (stAcc) acc = stAcc;
+                var stPreset = localStorage.getItem('dp_preset');
+                if (stPreset) preset = stPreset;
+                var stContrast = localStorage.getItem('dp_contrast');
+                if (stContrast) contrast = stContrast;
+                var stBg = localStorage.getItem('dp_bg');
+                if (stBg) darkBg = stBg;
+                var stFg = localStorage.getItem('dp_fg');
+                if (stFg) darkFg = stFg;
             } catch(e) {}
+            var effective = t;
             if (t === 'system') {
-                t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+                effective = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
             }
-            document.documentElement.setAttribute('data-theme', t);
-            if (t === 'dark') {
+            document.documentElement.setAttribute('data-theme', effective);
+            document.documentElement.setAttribute('data-theme-setting', t);
+            document.documentElement.setAttribute('data-preset', preset);
+            document.documentElement.setAttribute('data-contrast', contrast);
+            document.documentElement.style.setProperty('--dp-primary', acc);
+            document.documentElement.style.setProperty('--accent', acc);
+            document.documentElement.style.setProperty('--accent-primary', acc);
+
+            if (effective === 'dark') {
                 document.documentElement.setAttribute('data-bs-theme', 'dark');
+                if (darkBg) {
+                    document.documentElement.style.setProperty('--dp-bg', darkBg);
+                    document.documentElement.style.setProperty('--bg-primary', darkBg);
+                    document.documentElement.style.setProperty('--paper', darkBg);
+                }
+                if (darkFg) {
+                    document.documentElement.style.setProperty('--dp-text', darkFg);
+                    document.documentElement.style.setProperty('--text-primary', darkFg);
+                    document.documentElement.style.setProperty('--ink', darkFg);
+                }
             } else {
                 document.documentElement.removeAttribute('data-bs-theme');
             }

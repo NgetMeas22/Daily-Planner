@@ -460,43 +460,56 @@ $pageExtraHead = <<<'EOD'
         .empty-state h5 { font-weight: 700; color: var(--ink); }
         .empty-state p { color: var(--ink-soft); font-size: .93rem; }
 
-        /* ── Dark Theme ── */
-        body[data-theme="dark"] { background: #0b1120 !important; color: #e2e8f0 !important; }
-        body[data-theme="dark"] .goals-hero { background: linear-gradient(135deg, #0b1120 0%, #3d2c6b 55%, #7a2e58 100%); }
+        /* ── Dark Theme (Matches Planner UI) ── */
+        body[data-theme="dark"] {
+            --paper: var(--dp-bg, #101010);
+            --surface: var(--dp-surface, #161616);
+            --ink: var(--dp-text, #cccccc);
+            --ink-soft: var(--dp-muted, #888888);
+            --border: var(--dp-border, rgba(255,255,255,0.08));
+        }
+        body[data-theme="dark"] .goals-hero {
+            background: var(--dp-surface, #161616) !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+            color: var(--dp-text, #cccccc) !important;
+        }
         body[data-theme="dark"] .add-form-card,
         body[data-theme="dark"] .stat-card,
         body[data-theme="dark"] .notes-card,
         body[data-theme="dark"] .card {
-            background: #111827 !important;
-            color: #e2e8f0 !important;
-            border-color: #243047 !important;
+            background: var(--dp-surface, #161616) !important;
+            color: var(--dp-text, #cccccc) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
-        body[data-theme="dark"] .goal-card { background: #111827 !important; color: #e2e8f0 !important; border-color: #243047 !important; }
-        body[data-theme="dark"] .goal-card.completed { background: #111827 !important; border-color: #243047 !important; box-shadow: 0 4px 14px rgba(47,111,237,.16), 0 14px 34px rgba(47,111,237,.14) !important; }
-        body[data-theme="dark"] .goal-card.overdue { background: #111827 !important; border-color: #243047 !important; box-shadow: 0 4px 14px rgba(255,107,107,.18), 0 14px 34px rgba(255,107,107,.16) !important; }
-        body[data-theme="dark"] .goal-card.active { background: #111827 !important; border-color: #243047 !important; box-shadow: 0 4px 14px rgba(152,162,184,.1), 0 14px 34px rgba(152,162,184,.1) !important; }
-        body[data-theme="dark"] .goal-card.completed:hover { box-shadow: 0 6px 18px rgba(47,111,237,.22), 0 18px 40px rgba(47,111,237,.2) !important; }
-        body[data-theme="dark"] .goal-card.overdue:hover { box-shadow: 0 6px 18px rgba(255,107,107,.24), 0 18px 40px rgba(255,107,107,.22) !important; }
-        body[data-theme="dark"] .goal-card.active:hover { box-shadow: 0 6px 18px rgba(152,162,184,.16), 0 18px 40px rgba(152,162,184,.14) !important; }
-        body[data-theme="dark"] .stat-card { box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+        body[data-theme="dark"] .goal-card {
+            background: var(--dp-surface, #161616) !important;
+            color: var(--dp-text, #cccccc) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+            box-shadow: none !important;
+        }
+        body[data-theme="dark"] .goal-card.completed { border-color: rgba(59, 130, 246, .45) !important; box-shadow: none !important; }
+        body[data-theme="dark"] .goal-card.overdue { border-color: rgba(239, 68, 68, .5) !important; box-shadow: none !important; }
+        body[data-theme="dark"] .goal-card.active { border-color: var(--dp-border, rgba(255,255,255,0.08)) !important; box-shadow: none !important; }
+        body[data-theme="dark"] .stat-card { box-shadow: none !important; }
         body[data-theme="dark"] .text-muted,
         body[data-theme="dark"] .small,
         body[data-theme="dark"] .form-label {
-            color: #94a3b8 !important;
+            color: var(--dp-muted, #888888) !important;
         }
         body[data-theme="dark"] .badge.bg-secondary {
-            background: #1e293b !important;
-            color: #e2e8f0 !important;
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            color: var(--dp-text, #cccccc) !important;
         }
         body[data-theme="dark"] .form-control {
-            background: #0f172a !important;
-            color: #e2e8f0 !important;
-            border-color: #334155 !important;
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            color: var(--dp-text, #cccccc) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
-        body[data-theme="dark"] .add-form-toggle { color: #e2e8f0; }
-        body[data-theme="dark"] .add-form-toggle:hover { background: rgba(9,132,227,.12); }
-        body[data-theme="dark"] .notes-card { background: #0f172a !important; }
-        body[data-theme="dark"] .notes-reading-text { color: #cbd5e1; }
+        body[data-theme="dark"] .add-form-toggle { color: var(--dp-text, #cccccc); }
+        body[data-theme="dark"] .add-form-toggle:hover { background: rgba(255,255,255,.03); }
+        body[data-theme="dark"] .notes-card { background: var(--dp-surface-2, #1f1f1f) !important; }
+        body[data-theme="dark"] .notes-reading-text { color: var(--dp-text, #cccccc); }
     </style>
 EOD;
 

@@ -54,8 +54,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        :root {
+            --dp-bg: #f8fafc;
+            --dp-surface: #ffffff;
+            --dp-surface-2: #f1f5f9;
+            --dp-border: #e2e8f0;
+            --dp-text: #0f172a;
+            --dp-muted: #64748b;
+            --dp-primary: #007acc;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--dp-bg); color: var(--dp-text); }
         html[lang="kh"] body { font-family: 'Noto Sans Khmer', 'Inter', sans-serif; }
+        .card { background: var(--dp-surface); border: 1px solid var(--dp-border) !important; }
+        .form-control { background: var(--dp-surface); border: 1px solid var(--dp-border); color: var(--dp-text); }
+        .form-control:focus { background: var(--dp-surface); border-color: var(--dp-primary); color: var(--dp-text); box-shadow: 0 0 0 3px rgba(0,122,204,0.15); }
+        .btn-primary { background: var(--dp-primary); border-color: var(--dp-primary); }
+        .btn-primary:hover { background: #0062a3; border-color: #0062a3; }
         .loading-inline {
             pointer-events: none !important;
             opacity: 0.82 !important;
@@ -75,29 +89,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flex: 0 0 auto;
         }
         body[data-theme="dark"] {
-            background: #0f172a !important;
-            color: #e2e8f0;
+            --dp-bg: #101010;
+            --dp-surface: #161616;
+            --dp-surface-2: #1f1f1f;
+            --dp-border: rgba(255,255,255,0.08);
+            --dp-text: #cccccc;
+            --dp-muted: #888888;
+            --dp-primary: #007acc;
+            background: var(--dp-bg) !important;
+            color: var(--dp-text);
         }
         body[data-theme="dark"] .card {
-            background: #111827;
-            color: #e2e8f0;
+            background: var(--dp-surface) !important;
+            border-color: var(--dp-border) !important;
         }
         body[data-theme="dark"] .form-control {
-            background: #0f172a;
-            color: #e2e8f0;
-            border-color: #334155;
+            background: var(--dp-surface-2) !important;
+            color: var(--dp-text) !important;
+            border-color: var(--dp-border) !important;
         }
         body[data-theme="dark"] .form-label,
-        body[data-theme="dark"] .text-muted {
-            color: #94a3b8 !important;
+        body[data-theme="dark"] .text-muted,
+        body[data-theme="dark"] .text-secondary {
+            color: var(--dp-muted) !important;
         }
         body[data-theme="dark"] .btn-outline-primary {
-            color: #e2e8f0;
-            border-color: #475569;
+            color: var(--dp-text);
+            border-color: var(--dp-border);
+            background: var(--dp-surface-2);
         }
     </style>
 </head>
-<body class="bg-light min-vh-100 d-flex align-items-center py-5" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
+<body class="min-vh-100 d-flex align-items-center py-5" data-theme="<?php echo htmlspecialchars(current_theme()); ?>">
     <div class="position-fixed top-0 end-0 p-3 d-flex gap-2">
         <a class="btn btn-sm btn-outline-primary" href="?lang=en"><?php echo htmlspecialchars(t('english')); ?></a>
         <a class="btn btn-sm btn-outline-primary" href="?lang=kh">ខ្មែរ</a>
@@ -108,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="card border-0 shadow-sm rounded-4 p-4">
                     <div class="card-body p-2">
                         <h1 class="h3 text-primary text-center fw-bold mb-2">Create an Account</h1>
-                        <p class="text-muted text-center mb-4 small">Please fill in your details to register mnus smos</p>
+                        <p class="text-muted text-center mb-4 small">Fill in your details to create your account</p>
 
                         <?php if ($errors): ?>
                             <div class="alert alert-danger py-2 px-3 mb-3 small" role="alert">

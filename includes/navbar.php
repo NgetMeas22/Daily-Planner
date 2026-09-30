@@ -23,10 +23,6 @@ $userInitial = strtoupper(substr($userName, 0, 1));
                 <line x1="3" y1="18" x2="21" y2="18"></line>
             </svg>
         </button>
-        <!-- Clean Page Title -->
-        <div class="page-title-group">
-            <h1 class="page-title"><?= htmlspecialchars($pageTitle) ?></h1>
-        </div>
     </div>
 
     <!-- Right Controls: Single Consolidated Dropdown Button (Pic 2 Request) -->

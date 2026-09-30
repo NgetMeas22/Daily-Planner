@@ -530,19 +530,13 @@ $pageExtraHead = <<<'EOD'
             .note-card-body { padding: 16px; }
         }
 
-        /* ---- Dark Mode Overrides (Full Support) ---- */
-        html[data-theme="dark"],
-        body[data-theme="dark"],
-        [data-theme="dark"] {
-            --paper: #090d16;
-            --surface: #101726;
-            --ink: #f8fafc;
-            --ink-soft: #94a3b8;
-            --border: #1e293b;
-            --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
-            --shadow-md: 0 4px 16px rgba(0,0,0,.45);
-            background: var(--paper) !important;
-            color: var(--ink) !important;
+        /* ---- Dark Mode (Matches Planner UI) ---- */
+        body[data-theme="dark"] {
+            --paper: var(--dp-bg, #101010);
+            --surface: var(--dp-surface, #161616);
+            --ink: var(--dp-text, #cccccc);
+            --ink-soft: var(--dp-muted, #888888);
+            --border: var(--dp-border, rgba(255,255,255,0.08));
         }
 
         body[data-theme="dark"] .note-card,
@@ -551,50 +545,51 @@ $pageExtraHead = <<<'EOD'
         body[data-theme="dark"] .search-bar input,
         body[data-theme="dark"] .form-control,
         body[data-theme="dark"] .modal-content {
-            background-color: var(--surface) !important;
-            border-color: var(--border) !important;
-            color: var(--ink) !important;
+            background-color: var(--dp-surface, #161616) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+            color: var(--dp-text, #cccccc) !important;
         }
 
         body[data-theme="dark"] .note-card-meta {
-            background-color: #0c121e !important;
-            border-top-color: var(--border) !important;
+            background-color: var(--dp-surface-2, #1f1f1f) !important;
+            border-top-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
 
         body[data-theme="dark"] .note-card-title {
-            color: #ffffff !important;
+            color: var(--dp-text-strong, #ffffff) !important;
         }
 
         body[data-theme="dark"] .filter-tabs {
-            background: #0c121e !important;
-            border-color: var(--border) !important;
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
 
         body[data-theme="dark"] .filter-tab {
-            color: var(--ink-soft);
+            color: var(--dp-muted, #888888);
         }
 
         body[data-theme="dark"] .filter-tab.active {
-            background: #182235 !important;
-            color: #ffffff !important;
-            box-shadow: 0 2px 8px rgba(0,0,0,.3) !important;
+            background: var(--dp-surface, #161616) !important;
+            color: var(--dp-text-strong, #ffffff) !important;
+            box-shadow: none !important;
+            border: 1px solid var(--dp-border, rgba(255,255,255,0.08)) !important;
         }
 
         body[data-theme="dark"] .filter-tab .tab-count {
-            background: #101726;
-            border-color: var(--border);
-            color: var(--ink-soft);
+            background: var(--dp-surface-2, #1f1f1f);
+            border-color: var(--dp-border, rgba(255,255,255,0.08));
+            color: var(--dp-muted, #888888);
         }
 
         body[data-theme="dark"] .btn-note-action,
         body[data-theme="dark"] .btn-cancel {
-            background: #182235 !important;
-            border-color: var(--border) !important;
-            color: var(--ink) !important;
+            background: var(--dp-surface-2, #1f1f1f) !important;
+            border-color: var(--dp-border, rgba(255,255,255,0.08)) !important;
+            color: var(--dp-text, #cccccc) !important;
         }
 
         body[data-theme="dark"] .note-card-content.truncated::after {
-            background: linear-gradient(transparent, var(--surface)) !important;
+            background: linear-gradient(transparent, var(--dp-surface, #161616)) !important;
         }
     </style>
 EOD;

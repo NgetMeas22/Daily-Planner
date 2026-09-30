@@ -37,7 +37,8 @@ $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 
 // Load (or create) the user's preferences
-$stmt = $conn->prepare('SELECT deep_work, daily_reminders, focus_duration, theme_mode FROM settings WHERE user_id = ?');
+// Load (or create) the user's preferences
+$stmt = $conn->prepare('SELECT deep_work, daily_reminders, focus_duration, theme_mode, theme_preset, accent_color, contrast_style FROM settings WHERE user_id = ?');
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $settings = $stmt->get_result()->fetch_assoc();
@@ -45,8 +46,21 @@ if (!$settings) {
     $stmt = $conn->prepare('INSERT INTO settings (user_id) VALUES (?)');
     $stmt->bind_param('i', $userId);
     $stmt->execute();
-    $settings = ['deep_work' => 0, 'daily_reminders' => 1, 'focus_duration' => 45, 'theme_mode' => 'light'];
+    $settings = [
+        'deep_work' => 0,
+        'daily_reminders' => 1,
+        'focus_duration' => 45,
+        'theme_mode' => 'light',
+        'theme_preset' => 'matte',
+        'accent_color' => '#6366f1',
+        'contrast_style' => 'default'
+    ];
 }
+
+// Ensure defaults
+$settings['theme_preset'] = $settings['theme_preset'] ?? 'matte';
+$settings['accent_color'] = $settings['accent_color'] ?? '#6366f1';
+$settings['contrast_style'] = $settings['contrast_style'] ?? 'default';
 
 // --- SAVE PREFERENCES ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
@@ -57,20 +71,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
         $reminders = isset($_POST['daily_reminders']) ? 1 : 0;
         $focus = (int) ($_POST['default_focus_duration'] ?? 45);
         $themeMode = normalize_theme_mode($_POST['theme_mode'] ?? ($settings['theme_mode'] ?? 'light'));
+        $themePreset = trim($_POST['theme_preset'] ?? ($settings['theme_preset'] ?? 'matte'));
+        $accentColor = trim($_POST['accent_color'] ?? ($settings['accent_color'] ?? '#6366f1'));
+        $contrastStyle = trim($_POST['contrast_style'] ?? ($settings['contrast_style'] ?? 'default'));
+
         if (!in_array($focus, [25, 45, 60, 90], true)) {
             $focus = 45;
         }
+        if (!in_array($themePreset, ['matte', 'amoled', 'midnight', 'slate'], true)) {
+            $themePreset = 'matte';
+        }
+        if (!in_array($contrastStyle, ['default', 'strong'], true)) {
+            $contrastStyle = 'default';
+        }
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $accentColor)) {
+            $accentColor = '#6366f1';
+        }
 
-        $stmt = $conn->prepare('UPDATE settings SET deep_work = ?, daily_reminders = ?, focus_duration = ?, theme_mode = ?, updated_at = NOW() WHERE user_id = ?');
-        $stmt->bind_param('iissi', $deepWork, $reminders, $focus, $themeMode, $userId);
+        $stmt = $conn->prepare('UPDATE settings SET deep_work = ?, daily_reminders = ?, focus_duration = ?, theme_mode = ?, theme_preset = ?, accent_color = ?, contrast_style = ?, updated_at = NOW() WHERE user_id = ?');
+        $stmt->bind_param('iiissssi', $deepWork, $reminders, $focus, $themeMode, $themePreset, $accentColor, $contrastStyle, $userId);
         $stmt->execute();
+
         $_SESSION['theme'] = $themeMode;
-        setcookie('theme_mode', $themeMode, [
-            'expires' => time() + 60 * 60 * 24 * 365,
-            'path' => '/',
-            'samesite' => 'Lax',
-        ]);
-        settings_flash('Preferences saved.');
+        setcookie('theme_mode', $themeMode, ['expires' => time() + 31536000, 'path' => '/', 'samesite' => 'Lax']);
+        setcookie('dp_preset', $themePreset, ['expires' => time() + 31536000, 'path' => '/', 'samesite' => 'Lax']);
+        setcookie('dp_accent', $accentColor, ['expires' => time() + 31536000, 'path' => '/', 'samesite' => 'Lax']);
+        setcookie('dp_contrast', $contrastStyle, ['expires' => time() + 31536000, 'path' => '/', 'samesite' => 'Lax']);
+
+        settings_flash('Preferences saved successfully.');
         redirect('setting.php?tab=preferences');
     }
 }
@@ -344,6 +372,9 @@ layout_header('Settings', 'settings', $pageExtraHead);
                 <form method="post">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                     <input type="hidden" name="save_settings" value="1">
+                    <input type="hidden" name="theme_preset" id="inputThemePreset" value="<?= htmlspecialchars($settings['theme_preset']) ?>">
+                    <input type="hidden" name="contrast_style" id="inputContrastStyle" value="<?= htmlspecialchars($settings['contrast_style']) ?>">
+                    <input type="hidden" name="accent_color" id="inputAccentColor" value="<?= htmlspecialchars($settings['accent_color']) ?>">
 
                     <!-- Appearance Settings (Pic 2 Design Match) -->
                     <div class="setting-appearance-card mb-4">
@@ -378,11 +409,11 @@ layout_header('Settings', 'settings', $pageExtraHead);
                         <div class="setting-row mb-4">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="setting-label fw-bold">Contrast Style</label>
-                                <span class="setting-sub-info">Matte Dark (Pic 5)</span>
+                                <span class="setting-sub-info" id="contrastInfoBadge"><?= ucfirst($settings['contrast_style']) ?> Contrast</span>
                             </div>
                             <div class="setting-contrast-switch">
-                                <button type="button" class="contrast-btn active" id="contrastDefaultBtn" onclick="setContrast('default')">Default</button>
-                                <button type="button" class="contrast-btn" id="contrastStrongBtn" onclick="setContrast('strong')">Strong</button>
+                                <button type="button" class="contrast-btn <?= $settings['contrast_style'] === 'default' ? 'active' : '' ?>" id="contrastDefaultBtn" onclick="setContrast('default')">Default</button>
+                                <button type="button" class="contrast-btn <?= $settings['contrast_style'] === 'strong' ? 'active' : '' ?>" id="contrastStrongBtn" onclick="setContrast('strong')">Strong</button>
                             </div>
                         </div>
 
@@ -391,10 +422,10 @@ layout_header('Settings', 'settings', $pageExtraHead);
                             <label class="setting-label fw-bold mb-2">Theme Preset</label>
                             <div class="setting-select-wrap">
                                 <select class="form-select setting-preset-select" id="themePresetSelect" onchange="changeThemePreset(this.value)">
-                                    <option value="matte" selected>Matte Dark (Pic 5)</option>
-                                    <option value="midnight">Midnight Navy</option>
-                                    <option value="amoled">AMOLED Pitch Black</option>
-                                    <option value="slate">Slate Indigo</option>
+                                    <option value="matte" <?= $settings['theme_preset'] === 'matte' ? 'selected' : '' ?>>Matte Dark (Planner Match)</option>
+                                    <option value="amoled" <?= $settings['theme_preset'] === 'amoled' ? 'selected' : '' ?>>AMOLED Pitch Black</option>
+                                    <option value="midnight" <?= $settings['theme_preset'] === 'midnight' ? 'selected' : '' ?>>Midnight Navy</option>
+                                    <option value="slate" <?= $settings['theme_preset'] === 'slate' ? 'selected' : '' ?>>Slate Indigo</option>
                                 </select>
                             </div>
                         </div>
@@ -431,9 +462,10 @@ layout_header('Settings', 'settings', $pageExtraHead);
                             <div class="palette-field-group mb-3">
                                 <div class="palette-input-row">
                                     <span class="palette-input-label">Accent Focus</span>
-                                    <div class="palette-color-display">
+                                    <div class="palette-color-display align-items-center gap-2">
                                         <div class="palette-color-box" id="paletteAccentBox" style="background:var(--dp-primary);"></div>
-                                        <span class="palette-hex-code" id="paletteAccentHex">#6366F1</span>
+                                        <span class="palette-hex-code" id="paletteAccentHex"><?= strtoupper(htmlspecialchars($settings['accent_color'])) ?></span>
+                                        <input type="color" id="customColorPicker" value="<?= htmlspecialchars($settings['accent_color']) ?>" oninput="applyAccentColor(this.value)" title="Choose Custom Accent Color" style="width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;padding:0;background:transparent;">
                                     </div>
                                 </div>
                             </div>
@@ -442,7 +474,7 @@ layout_header('Settings', 'settings', $pageExtraHead);
                                 <span class="palette-swatches-label">Presets:</span>
                                 <div class="palette-dots">
                                     <button type="button" class="swatch-dot" style="background:#3b82f6;" title="Blue" onclick="applyAccentColor('#3b82f6')"></button>
-                                    <button type="button" class="swatch-dot active" style="background:#6366f1;" title="Indigo (Pic 5)" onclick="applyAccentColor('#6366f1')"></button>
+                                    <button type="button" class="swatch-dot" style="background:#6366f1;" title="Indigo (Pic 5)" onclick="applyAccentColor('#6366f1')"></button>
                                     <button type="button" class="swatch-dot" style="background:#0ea5e9;" title="Sky" onclick="applyAccentColor('#0ea5e9')"></button>
                                     <button type="button" class="swatch-dot" style="background:#10b981;" title="Emerald" onclick="applyAccentColor('#10b981')"></button>
                                     <button type="button" class="swatch-dot" style="background:#8b5cf6;" title="Purple" onclick="applyAccentColor('#8b5cf6')"></button>
@@ -553,70 +585,96 @@ function updatePaletteDisplay(effectiveTheme) {
     var textBox = document.getElementById('paletteTextBox');
     var textHex = document.getElementById('paletteTextHex');
     var isDark = effectiveTheme === 'dark';
+    var preset = document.documentElement.getAttribute('data-preset') || 'matte';
+    
     if (!isDark) {
         if (bgBox) bgBox.style.background = '#f8fafc';
         if (bgHex) bgHex.textContent = '#F8FAFC';
         if (textBox) textBox.style.background = '#0f172a';
         if (textHex) textHex.textContent = '#0F172A';
     } else {
-        if (bgBox) bgBox.style.background = '#0d0f12';
-        if (bgHex) bgHex.textContent = '#0D0F12';
-        if (textBox) textBox.style.background = '#f8fafc';
-        if (textHex) textHex.textContent = '#F8FAFC';
+        var presetBgMap = {
+            'matte': '#101010',
+            'amoled': '#000000',
+            'midnight': '#0B1120',
+            'slate': '#0F172A'
+        };
+        var presetFgMap = {
+            'matte': '#CCCCCC',
+            'amoled': '#F8FAFC',
+            'midnight': '#F8FAFC',
+            'slate': '#F8FAFC'
+        };
+        var bgVal = presetBgMap[preset] || '#101010';
+        var fgVal = presetFgMap[preset] || '#CCCCCC';
+        if (bgBox) bgBox.style.background = bgVal;
+        if (bgHex) bgHex.textContent = bgVal;
+        if (textBox) textBox.style.background = fgVal;
+        if (textHex) textHex.textContent = fgVal;
     }
 }
 
 function setContrast(type) {
     var defBtn = document.getElementById('contrastDefaultBtn');
     var strBtn = document.getElementById('contrastStrongBtn');
+    var inputContrast = document.getElementById('inputContrastStyle');
+    var badge = document.getElementById('contrastInfoBadge');
     if (defBtn) defBtn.classList.toggle('active', type === 'default');
     if (strBtn) strBtn.classList.toggle('active', type === 'strong');
+    if (inputContrast) inputContrast.value = type;
+    if (badge) badge.textContent = (type === 'strong' ? 'Strong' : 'Default') + ' Contrast';
+
+    document.documentElement.setAttribute('data-contrast', type);
     try {
         localStorage.setItem('dp_contrast', type);
     } catch(e) {}
     document.cookie = 'dp_contrast=' + encodeURIComponent(type) + '; path=/; max-age=31536000; SameSite=Lax';
-    if (type === 'strong') {
-        document.documentElement.style.setProperty('--dp-border', 'rgba(255, 255, 255, 0.28)');
-    } else {
-        document.documentElement.style.removeProperty('--dp-border');
-    }
 }
 
 function changeThemePreset(preset) {
+    var inputPreset = document.getElementById('inputThemePreset');
+    if (inputPreset) inputPreset.value = preset;
+
+    document.documentElement.setAttribute('data-preset', preset);
+    if (document.body) document.body.setAttribute('data-preset', preset);
     try {
         localStorage.setItem('dp_preset', preset);
     } catch(e) {}
     document.cookie = 'dp_preset=' + encodeURIComponent(preset) + '; path=/; max-age=31536000; SameSite=Lax';
-    if (preset === 'midnight') {
-        applyAccentColor('#3b82f6');
-        document.documentElement.style.setProperty('--dp-bg', '#0b1120');
-        document.documentElement.style.setProperty('--dp-surface', '#111827');
-    } else if (preset === 'amoled') {
-        applyAccentColor('#6366f1');
-        document.documentElement.style.setProperty('--dp-bg', '#000000');
-        document.documentElement.style.setProperty('--dp-surface', '#0a0a0a');
-    } else if (preset === 'slate') {
-        applyAccentColor('#8b5cf6');
-        document.documentElement.style.setProperty('--dp-bg', '#0f172a');
-        document.documentElement.style.setProperty('--dp-surface', '#1e293b');
-    } else {
-        applyAccentColor('#6366f1');
-        document.documentElement.style.removeProperty('--dp-bg');
-        document.documentElement.style.removeProperty('--dp-surface');
+
+    var presetAccentMap = {
+        'matte': '#007acc',
+        'amoled': '#6366f1',
+        'midnight': '#3b82f6',
+        'slate': '#8b5cf6'
+    };
+    if (presetAccentMap[preset]) {
+        applyAccentColor(presetAccentMap[preset]);
     }
-    updatePaletteDisplay(document.documentElement.getAttribute('data-theme') || 'dark');
+    updatePaletteDisplay(document.documentElement.getAttribute('data-theme') || 'light');
 }
 
 function applyAccentColor(hex) {
+    if (!hex || !hex.startsWith('#')) return;
     var accBox = document.getElementById('paletteAccentBox');
     var accHex = document.getElementById('paletteAccentHex');
+    var picker = document.getElementById('customColorPicker');
+    var inputAccent = document.getElementById('inputAccentColor');
+
     if (accBox) accBox.style.background = hex;
     if (accHex) accHex.textContent = hex.toUpperCase();
+    if (picker) picker.value = hex;
+    if (inputAccent) inputAccent.value = hex;
+
     document.documentElement.style.setProperty('--dp-primary', hex);
+    document.documentElement.style.setProperty('--accent', hex);
+    document.documentElement.style.setProperty('--accent-primary', hex);
+
     try {
         localStorage.setItem('dp_accent', hex);
     } catch(e) {}
     document.cookie = 'dp_accent=' + encodeURIComponent(hex) + '; path=/; max-age=31536000; SameSite=Lax';
+
     document.querySelectorAll('.swatch-dot').forEach(function(d) {
         var bg = d.style.background || '';
         d.classList.toggle('active', bg.toLowerCase().indexOf(hex.toLowerCase()) !== -1);
@@ -624,22 +682,27 @@ function applyAccentColor(hex) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    var storedTheme = localStorage.getItem('dp_theme') || document.documentElement.getAttribute('data-theme') || 'dark';
+    var storedTheme = localStorage.getItem('dp_theme') || document.documentElement.getAttribute('data-theme') || 'light';
     var effective = storedTheme === 'system' ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light') : storedTheme;
     updatePaletteDisplay(effective);
     var badge = document.getElementById('currentThemeBadge');
     if (badge) badge.textContent = storedTheme.charAt(0).toUpperCase() + storedTheme.slice(1) + ' Mode';
 
-    var storedPreset = localStorage.getItem('dp_preset');
+    var storedPreset = localStorage.getItem('dp_preset') || '<?= htmlspecialchars($settings['theme_preset']) ?>';
     if (storedPreset) {
         var presetSel = document.getElementById('themePresetSelect');
         if (presetSel) presetSel.value = storedPreset;
+        document.documentElement.setAttribute('data-preset', storedPreset);
+        var inputPreset = document.getElementById('inputThemePreset');
+        if (inputPreset) inputPreset.value = storedPreset;
     }
-    var storedContrast = localStorage.getItem('dp_contrast');
+
+    var storedContrast = localStorage.getItem('dp_contrast') || '<?= htmlspecialchars($settings['contrast_style']) ?>';
     if (storedContrast) {
         setContrast(storedContrast);
     }
-    var storedAccent = localStorage.getItem('dp_accent');
+
+    var storedAccent = localStorage.getItem('dp_accent') || '<?= htmlspecialchars($settings['accent_color']) ?>';
     if (storedAccent) {
         applyAccentColor(storedAccent);
     }

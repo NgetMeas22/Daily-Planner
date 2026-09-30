@@ -115,6 +115,58 @@ function require_login(): void
     }
 }
 
+function get_user_theme_settings(): array
+{
+    global $conn;
+    $default = [
+        'theme_mode'     => 'dark',
+        'theme_preset'   => 'default_dark',
+        'accent_color'   => '#007acc',
+        'contrast_style' => 'default',
+        'dark_bg_color'  => '#101010',
+        'dark_fg_color'  => '#cccccc',
+    ];
+
+    if (!empty($_COOKIE['theme_mode'])) {
+        $default['theme_mode'] = normalize_theme_mode($_COOKIE['theme_mode']);
+    }
+    if (!empty($_COOKIE['dp_preset'])) {
+        $default['theme_preset'] = $_COOKIE['dp_preset'];
+    }
+    if (!empty($_COOKIE['dp_accent'])) {
+        $default['accent_color'] = $_COOKIE['dp_accent'];
+    }
+    if (!empty($_COOKIE['dp_contrast'])) {
+        $default['contrast_style'] = $_COOKIE['dp_contrast'];
+    }
+    if (!empty($_COOKIE['dp_bg'])) {
+        $default['dark_bg_color'] = $_COOKIE['dp_bg'];
+    }
+    if (!empty($_COOKIE['dp_fg'])) {
+        $default['dark_fg_color'] = $_COOKIE['dp_fg'];
+    }
+
+    if (isset($_SESSION['user_id']) && $conn) {
+        $userId = (int) $_SESSION['user_id'];
+        $stmt = $conn->prepare('SELECT theme_mode, theme_preset, accent_color, contrast_style, dark_bg_color, dark_fg_color FROM settings WHERE user_id = ? LIMIT 1');
+        if ($stmt) {
+            $stmt->bind_param('i', $userId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row) {
+                if (!empty($row['theme_mode'])) $default['theme_mode'] = normalize_theme_mode($row['theme_mode']);
+                if (!empty($row['theme_preset'])) $default['theme_preset'] = $row['theme_preset'];
+                if (!empty($row['accent_color'])) $default['accent_color'] = $row['accent_color'];
+                if (!empty($row['contrast_style'])) $default['contrast_style'] = $row['contrast_style'];
+                if (!empty($row['dark_bg_color'])) $default['dark_bg_color'] = $row['dark_bg_color'];
+                if (!empty($row['dark_fg_color'])) $default['dark_fg_color'] = $row['dark_fg_color'];
+            }
+        }
+    }
+    return $default;
+}
+
 if (is_logged_in()) {
     $_SESSION['user_id'] = (int) $_SESSION['user_id'];
     if (!isset($_SESSION['lang']) || !in_array($_SESSION['lang'], ['en', 'kh'], true)) {
@@ -124,20 +176,8 @@ if (is_logged_in()) {
     if (!empty($_COOKIE['theme_mode'])) {
         $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode']);
     } else {
-        $themeMode = 'dark';
-        if ($conn) {
-            $themeStmt = $conn->prepare('SELECT theme_mode FROM settings WHERE user_id = ? LIMIT 1');
-            if ($themeStmt) {
-                $themeStmt->bind_param('i', $_SESSION['user_id']);
-                $themeStmt->execute();
-                $themeRow = $themeStmt->get_result()->fetch_assoc();
-                $themeStmt->close();
-
-                if ($themeRow && isset($themeRow['theme_mode'])) {
-                    $themeMode = normalize_theme_mode($themeRow['theme_mode']);
-                }
-            }
-        }
+        $ts = get_user_theme_settings();
+        $themeMode = $ts['theme_mode'];
 
         setcookie('theme_mode', $themeMode, [
             'expires' => time() + 60 * 60 * 24 * 365,
@@ -149,3 +189,4 @@ if (is_logged_in()) {
 } else {
     $_SESSION['theme'] = normalize_theme_mode($_COOKIE['theme_mode'] ?? ($_SESSION['theme'] ?? 'dark'));
 }
+

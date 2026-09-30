@@ -21,7 +21,7 @@ $conn->query("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
 $conn->select_db($dbName);
 $conn->set_charset('utf8mb4');
 
-const SCHEMA_VERSION = '7';
+const SCHEMA_VERSION = '8';
 
 $conn->query("CREATE TABLE IF NOT EXISTS meta (
     k VARCHAR(50) PRIMARY KEY,
@@ -109,8 +109,23 @@ if ($schemaVersion !== SCHEMA_VERSION) {
 
     $hasThemeMode = $conn->query("SHOW COLUMNS FROM settings LIKE 'theme_mode'");
     if ($hasThemeMode && $hasThemeMode->num_rows === 0) {
-        $conn->query("ALTER TABLE settings ADD COLUMN theme_mode ENUM('light','dark') NOT NULL DEFAULT 'light' AFTER focus_duration");
+        $conn->query("ALTER TABLE settings ADD COLUMN theme_mode ENUM('light','dark','system') NOT NULL DEFAULT 'light' AFTER focus_duration");
         $conn->query("UPDATE settings SET theme_mode = 'light' WHERE theme_mode IS NULL OR theme_mode = ''");
+    }
+
+    $hasThemePreset = $conn->query("SHOW COLUMNS FROM settings LIKE 'theme_preset'");
+    if ($hasThemePreset && $hasThemePreset->num_rows === 0) {
+        $conn->query("ALTER TABLE settings ADD COLUMN theme_preset VARCHAR(50) NOT NULL DEFAULT 'matte' AFTER theme_mode");
+    }
+
+    $hasAccentColor = $conn->query("SHOW COLUMNS FROM settings LIKE 'accent_color'");
+    if ($hasAccentColor && $hasAccentColor->num_rows === 0) {
+        $conn->query("ALTER TABLE settings ADD COLUMN accent_color VARCHAR(20) NOT NULL DEFAULT '#6366f1' AFTER theme_preset");
+    }
+
+    $hasContrast = $conn->query("SHOW COLUMNS FROM settings LIKE 'contrast_style'");
+    if ($hasContrast && $hasContrast->num_rows === 0) {
+        $conn->query("ALTER TABLE settings ADD COLUMN contrast_style VARCHAR(20) NOT NULL DEFAULT 'default' AFTER accent_color");
     }
 
     $conn->query("
