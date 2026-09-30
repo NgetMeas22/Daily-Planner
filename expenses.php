@@ -7,8 +7,8 @@ $userId = (int) $_SESSION['user_id'];
 $userName = $_SESSION['user_name'] ?? 'User';
 $errors = [];
 
-// Conversion rate (1 USD = 4,050 KHR)
-$khrRate = 4050;
+// Conversion rate (1 USD = 4,000 KHR)
+$khrRate = 4000;
 
 // Per-month budget helper: returns [base_budget, carry_in] for a given 'YYYY-MM'
 // month, creating a row on first access so leftover money from the previous month
@@ -280,19 +280,6 @@ $activeDatesStmt->execute();
 $activeDates = $activeDatesStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $activeDatesStmt->close();
 $latestActiveDate = !empty($activeDates) ? $activeDates[0]['expense_date'] : null;
-
-// Fetch latest entries across all dates so user always sees data
-$recentAllStmt = $conn->prepare("
-    SELECT id, title, amount, expense_date, type
-    FROM expenses
-    WHERE user_id = ?
-    ORDER BY expense_date DESC, id DESC
-    LIMIT 20
-");
-$recentAllStmt->bind_param('i', $userId);
-$recentAllStmt->execute();
-$recentAllItems = $recentAllStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$recentAllStmt->close();
 
 // Daily totals (selected date), kept for the table footer
 $totalUsd = $dateExpenseTotal;
@@ -1090,43 +1077,36 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
         </div>
     </div>
 
-    <!-- Unified Transactions Card with Selected Date Summary at the Bottom -->
+    <!-- Transactions for Selected Date (One Day View - Matches Planner) -->
     <div class="entries-card mb-4 anim-up anim-5">
         <div class="entries-header d-flex justify-content-between align-items-center">
             <div>
-                <h6 class="mb-0 fw-bold"><i class="bi bi-clock-history me-1" style="color:var(--accent);"></i> All Recent Transactions</h6>
-                <small style="color:var(--ink-soft);">Showing latest activity across all dates in your account</small>
+                <h6 class="mb-0 fw-bold">
+                    <i class="bi bi-receipt-cutoff me-1" style="color:var(--accent);"></i>
+                    Transactions for <?php echo htmlspecialchars(date('l, M j, Y', strtotime($selectedDate))); ?>
+                </h6>
+                <small style="color:var(--ink-soft);">Income and expense activity for this day</small>
             </div>
-            <span class="item-count-badge"><?php echo count($recentAllItems); ?> items</span>
+            <span class="item-count-badge"><?php echo count($dateItems); ?> <?php echo count($dateItems) === 1 ? 'item' : 'items'; ?></span>
         </div>
 
         <!-- Mobile View -->
         <div class="d-block d-md-none">
-            <?php if (!empty($recentAllItems)): ?>
-                <?php foreach ($recentAllItems as $rItem):
-                    $isInc = ($rItem['type'] === 'income');
-                    $rUsd = (float)$rItem['amount'];
+            <?php if (!empty($dateItems)): ?>
+                <?php foreach ($dateItems as $item):
+                    $isInc = ($item['type'] === 'income');
+                    $rUsd = (float)$item['amount'];
                     $rKhr = $rUsd * $khrRate;
                     $rBadgeClass = $isInc ? 'type-badge-income' : 'type-badge-expense';
                     $rBadgeLabel = $isInc ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
                     $rColor = $isInc ? '#00B894' : '#FF6B6B';
                     $rSign = $isInc ? '+' : '-';
-                    $isSelectedRow = ($rItem['expense_date'] === $selectedDate);
                 ?>
-                    <div class="entry-item d-flex justify-content-between align-items-center py-2 px-3" <?php if ($isSelectedRow): ?>style="background:rgba(99,102,241,0.04);"<?php endif; ?>>
+                    <div class="entry-item d-flex justify-content-between align-items-center py-2 px-3">
                         <div class="min-w-0 flex-grow-1">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <span class="fw-semibold small text-truncate" style="color:var(--ink);max-width:140px;"><?php echo htmlspecialchars($rItem['title']); ?></span>
+                                <span class="fw-semibold small text-truncate" style="color:var(--ink);max-width:180px;"><?php echo htmlspecialchars($item['title']); ?></span>
                                 <span class="<?php echo $rBadgeClass; ?>"><?php echo $rBadgeLabel; ?></span>
-                                <?php if ($isSelectedRow): ?>
-                                    <span class="badge" style="font-size:.62rem;background:var(--accent);color:#fff;border-radius:999px;padding:2px 6px;">Selected</span>
-                                <?php endif; ?>
-                            </div>
-                            <div class="d-flex align-items-center gap-1 mt-1" style="font-size:.72rem;color:var(--ink-soft);">
-                                <i class="bi bi-calendar3" style="font-size:.65rem;"></i>
-                                <a href="expenses.php?date=<?php echo urlencode($rItem['expense_date']); ?>" class="text-decoration-none" style="color:var(--accent);">
-                                    <?php echo htmlspecialchars($rItem['expense_date']); ?>
-                                </a>
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-2">
@@ -1135,11 +1115,11 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                                 <div style="font-size:.68rem;color:var(--ink-soft);"><?php echo $rSign; ?><?php echo number_format($rKhr); ?> ៛</div>
                             </div>
                             <div class="d-flex align-items-center gap-1">
-                                <a class="btn-entry-edit p-1" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;" href="#" onclick="openEditEntry(<?php echo (int)$rItem['id']; ?>);return false;" title="Edit">
+                                <a class="btn-entry-edit p-1" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;" title="Edit">
                                     <i class="bi bi-pencil" style="font-size:.72rem;"></i>
                                 </a>
                                 <a class="btn-entry-delete p-1" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;"
-                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$rItem['id']; ?>"
+                                   href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
                                    onclick="return confirm('Delete this entry?')" title="Delete">
                                     <i class="bi bi-trash3" style="font-size:.72rem;"></i>
                                 </a>
@@ -1149,7 +1129,7 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                 <?php endforeach; ?>
             <?php else: ?>
                 <div class="empty-state py-4 text-center">
-                    <p class="mb-0 small" style="color:var(--ink-soft);">No transactions recorded yet in your account.</p>
+                    <p class="mb-0 small" style="color:var(--ink-soft);">No transactions logged for <?php echo htmlspecialchars(date('M j, Y', strtotime($selectedDate))); ?>.</p>
                 </div>
             <?php endif; ?>
         </div>
@@ -1161,47 +1141,37 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                     <tr style="border-bottom:1px solid var(--border);">
                         <th class="px-4 py-3 fw-semibold" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Title</th>
                         <th class="px-4 py-3 fw-semibold" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Type</th>
-                        <th class="px-4 py-3 fw-semibold" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Date</th>
                         <th class="px-4 py-3 fw-semibold text-end" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Amount</th>
                         <th class="px-4 py-3 fw-semibold text-end" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);width:140px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (!empty($recentAllItems)): ?>
-                        <?php foreach ($recentAllItems as $rItem): 
-                            $isInc = ($rItem['type'] === 'income');
-                            $rUsd = (float)$rItem['amount'];
+                    <?php if (!empty($dateItems)): ?>
+                        <?php foreach ($dateItems as $item): 
+                            $isInc = ($item['type'] === 'income');
+                            $rUsd = (float)$item['amount'];
                             $rKhr = $rUsd * $khrRate;
                             $rBadgeClass = $isInc ? 'type-badge-income' : 'type-badge-expense';
                             $rBadgeLabel = $isInc ? 'Income · ចំណូល' : 'Expense · ចំណាយ';
                             $rColor = $isInc ? '#00B894' : '#FF6B6B';
                             $rSign = $isInc ? '+' : '-';
-                            $isSelectedRow = ($rItem['expense_date'] === $selectedDate);
                         ?>
-                            <tr style="border-bottom:1px solid var(--border);<?php if ($isSelectedRow): ?>background:rgba(99,102,241,0.035);<?php endif; ?>">
+                            <tr style="border-bottom:1px solid var(--border);">
                                 <td class="px-4 py-3 fw-medium align-middle" style="color:var(--ink);">
-                                    <?php echo htmlspecialchars($rItem['title']); ?>
-                                    <?php if ($isSelectedRow): ?>
-                                        <span class="badge ms-1" style="font-size:.62rem;background:var(--accent);color:#fff;border-radius:999px;">Selected Date</span>
-                                    <?php endif; ?>
+                                    <?php echo htmlspecialchars($item['title']); ?>
                                 </td>
                                 <td class="px-4 py-3 align-middle"><span class="<?php echo $rBadgeClass; ?>"><?php echo $rBadgeLabel; ?></span></td>
-                                <td class="px-4 py-3 align-middle">
-                                    <a href="expenses.php?date=<?php echo urlencode($rItem['expense_date']); ?>" class="text-decoration-none fw-semibold" style="color:var(--accent);font-size:.8rem;">
-                                        <i class="bi bi-calendar3 me-1"></i><?php echo htmlspecialchars($rItem['expense_date']); ?>
-                                    </a>
-                                </td>
                                 <td class="px-4 py-3 text-end align-middle">
                                     <div class="fw-semibold" style="color:<?php echo $rColor; ?>;"><?php echo $rSign; ?>$<?php echo number_format($rUsd, 2); ?></div>
                                     <div style="font-size:.72rem;color:var(--ink-soft);"><?php echo $rSign; ?><?php echo number_format($rKhr); ?> ៛</div>
                                 </td>
                                 <td class="px-4 py-3 text-end align-middle">
                                     <div class="d-inline-flex align-items-center gap-2">
-                                        <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$rItem['id']; ?>);return false;">
+                                        <a class="btn-entry-edit" href="#" onclick="openEditEntry(<?php echo (int)$item['id']; ?>);return false;">
                                             <i class="bi bi-pencil" style="font-size:.7rem;"></i> Edit
                                         </a>
                                         <a class="btn-entry-delete"
-                                           href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$rItem['id']; ?>"
+                                           href="expenses.php?date=<?php echo urlencode($selectedDate); ?>&delete=<?php echo (int)$item['id']; ?>"
                                            onclick="return confirm('Delete this entry?')">
                                             <i class="bi bi-trash3" style="font-size:.7rem;"></i> Delete
                                         </a>
@@ -1211,11 +1181,11 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="5" class="text-center py-5">
+                            <td colspan="4" class="text-center py-5">
                                 <div class="empty-state">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;color:var(--ink-soft);opacity:.6;margin-bottom:12px;"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <h6 class="fw-bold mb-1" style="color:var(--ink);">No transactions recorded yet</h6>
-                                    <p class="mb-0 small" style="color:var(--ink-soft);">Add an expense or income entry above to start tracking.</p>
+                                    <h6 class="fw-bold mb-1" style="color:var(--ink);">No transactions on this date</h6>
+                                    <p class="mb-0 small" style="color:var(--ink-soft);">Add an expense or income entry above for <?php echo htmlspecialchars(date('l, F j, Y', strtotime($selectedDate))); ?>.</p>
                                 </div>
                             </td>
                         </tr>
@@ -1410,7 +1380,7 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
     const REPORT_DATA = <?php echo json_encode($reportByDate, JSON_UNESCAPED_UNICODE); ?>;
     const ENTRY_DATA = <?php
         $entryById = [];
-        foreach (array_merge($dateItems, $recentAllItems) as $e) {
+        foreach ($dateItems as $e) {
             $entryById[(int) $e['id']] = [
                 'id' => (int) $e['id'],
                 'title' => $e['title'] ?? '',
@@ -1418,6 +1388,17 @@ layout_header('Expenses & Budget', 'expenses', $pageExtraHead);
                 'expense_date' => $e['expense_date'] ?? '',
                 'type' => $e['type'] ?? 'expense',
             ];
+        }
+        foreach ($reportByDate as $dList) {
+            foreach ($dList as $e) {
+                $entryById[(int) $e['id']] = [
+                    'id' => (int) $e['id'],
+                    'title' => $e['title'] ?? '',
+                    'amount' => (float) $e['amount'],
+                    'expense_date' => $e['expense_date'] ?? '',
+                    'type' => $e['type'] ?? 'expense',
+                ];
+            }
         }
         echo json_encode($entryById, JSON_UNESCAPED_UNICODE);
     ?>;
