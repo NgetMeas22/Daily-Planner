@@ -104,7 +104,7 @@ $monthStart = date('Y-m-01');
 $monthEnd   = date('Y-m-t');
 $stmt = $conn->prepare("
     SELECT
-      (SELECT COUNT(*) FROM subjects WHERE user_id = ? OR user_id IS NULL) AS subjects,
+      (SELECT COUNT(*) FROM subjects WHERE user_id = ?) AS subjects,
       (SELECT COUNT(*) FROM planner  WHERE user_id = ?) AS planner,
       (SELECT COUNT(*) FROM goals    WHERE user_id = ?) AS goals,
       (SELECT COUNT(*) FROM expenses WHERE user_id = ?) AS expenses,
@@ -194,7 +194,7 @@ $plannerRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $allSubjects = [];
-$stmt = $conn->prepare("SELECT id, name FROM subjects WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC");
+$stmt = $conn->prepare("SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC");
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $allSubjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);

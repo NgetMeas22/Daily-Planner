@@ -113,8 +113,8 @@
     }
 
     // --- DATA FETCHING ---
-    // Fetch Subjects List (User custom + default template subjects)
-    $subjectsStmt = $conn->prepare('SELECT id, name FROM subjects WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC');
+    // Fetch Subjects List (User's custom subjects)
+    $subjectsStmt = $conn->prepare('SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC');
     $subjectsStmt->bind_param('i', $userId);
     $subjectsStmt->execute();
     $subjects = $subjectsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -971,51 +971,64 @@ layout_header('Daily Planner', 'planner', $pageExtraHead);
 
                 <!-- Subject Grid -->
                 <div class="mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <label class="form-label fw-semibold mb-0" style="font-size:.85rem;color:var(--ink);">Select Subjects & Set Time</label>
-                        <label class="form-check-label d-inline-flex align-items-center gap-2" style="font-size:.82rem;color:var(--accent);cursor:pointer;font-weight:600;">
-                            <input type="checkbox" id="selectAllSubjects" class="form-check-input">
-                            Select All
-                        </label>
-                    </div>
-                    <div class="row g-2 g-md-3">
-                        <?php foreach ($subjects as $subject): 
-                            $sId = (int)$subject['id'];
-                            $template = $copyTemplateMap[$sId] ?? null;
-                            $isChecked = $template !== null;
-                            $startValue = $template['start_time'] ?? '';
-                            $endValue = $template['end_time'] ?? '';
-                        ?>
-                            <div class="col-6 col-md-6 col-lg-4">
-                                <div class="subject-card <?php echo $isChecked ? 'checked' : ''; ?>" id="card-<?php echo $sId; ?>">
-                                    <label>
-                                        <input type="checkbox" class="form-check-input subject-checkbox" name="subject_ids[]" value="<?php echo $sId; ?>" id="sub-<?php echo $sId; ?>" <?php echo $isChecked ? 'checked' : ''; ?> onchange="toggleTimeInputs(<?php echo $sId; ?>)">
-                                        <span class="form-label"><?php echo htmlspecialchars($subject['name']); ?></span>
-                                    </label>
-                                    <div class="time-group" id="time-group-<?php echo $sId; ?>">
-                                        <input type="time" name="start_time[<?php echo $sId; ?>]" <?php echo $isChecked ? '' : 'disabled'; ?> value="<?php echo htmlspecialchars($startValue); ?>" required>
-                                        <span class="time-sep">to</span>
-                                        <input type="time" name="end_time[<?php echo $sId; ?>]" <?php echo $isChecked ? '' : 'disabled'; ?> value="<?php echo htmlspecialchars($endValue); ?>" required>
+                    <?php if (!empty($subjects)): ?>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <label class="form-label fw-semibold mb-0" style="font-size:.85rem;color:var(--ink);">Select Subjects & Set Time</label>
+                            <label class="form-check-label d-inline-flex align-items-center gap-2" style="font-size:.82rem;color:var(--accent);cursor:pointer;font-weight:600;">
+                                <input type="checkbox" id="selectAllSubjects" class="form-check-input">
+                                Select All
+                            </label>
+                        </div>
+                        <div class="row g-2 g-md-3">
+                            <?php foreach ($subjects as $subject): 
+                                $sId = (int)$subject['id'];
+                                $template = $copyTemplateMap[$sId] ?? null;
+                                $isChecked = $template !== null;
+                                $startValue = $template['start_time'] ?? '';
+                                $endValue = $template['end_time'] ?? '';
+                            ?>
+                                <div class="col-6 col-md-6 col-lg-4">
+                                    <div class="subject-card <?php echo $isChecked ? 'checked' : ''; ?>" id="card-<?php echo $sId; ?>">
+                                        <label>
+                                            <input type="checkbox" class="form-check-input subject-checkbox" name="subject_ids[]" value="<?php echo $sId; ?>" id="sub-<?php echo $sId; ?>" <?php echo $isChecked ? 'checked' : ''; ?> onchange="toggleTimeInputs(<?php echo $sId; ?>)">
+                                            <span class="form-label"><?php echo htmlspecialchars($subject['name']); ?></span>
+                                        </label>
+                                        <div class="time-group" id="time-group-<?php echo $sId; ?>">
+                                            <input type="time" name="start_time[<?php echo $sId; ?>]" <?php echo $isChecked ? '' : 'disabled'; ?> value="<?php echo htmlspecialchars($startValue); ?>" required>
+                                            <span class="time-sep">to</span>
+                                            <input type="time" name="end_time[<?php echo $sId; ?>]" <?php echo $isChecked ? '' : 'disabled'; ?> value="<?php echo htmlspecialchars($endValue); ?>" required>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
+                            <?php endforeach; ?>
+                        </div>
 
-                <!-- Day Selector -->
-                <div class="mb-4" style="max-width:280px;">
-                    <label class="form-label fw-semibold" style="font-size:.85rem;">Day</label>
-                    <select class="form-select form-select-sm" name="day_name" required>
-                        <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day): ?>
-                            <option value="<?php echo $day; ?>" <?php echo (date('l', strtotime($selectedDate)) === $day) ? 'selected' : ''; ?>><?php echo $day; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                        <!-- Day Selector -->
+                        <div class="mt-4 mb-4" style="max-width:280px;">
+                            <label class="form-label fw-semibold" style="font-size:.85rem;">Day</label>
+                            <select class="form-select form-select-sm" name="day_name" required>
+                                <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day): ?>
+                                    <option value="<?php echo $day; ?>" <?php echo (date('l', strtotime($selectedDate)) === $day) ? 'selected' : ''; ?>><?php echo $day; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                <button type="submit" class="btn btn-accent w-100 fw-bold">
-                    <i class="bi bi-plus-lg me-1"></i>Save All Planned Tasks
-                </button>
+                        <button type="submit" class="btn btn-accent w-100 fw-bold">
+                            <i class="bi bi-plus-lg me-1"></i>Save All Planned Tasks
+                        </button>
+                    <?php else: ?>
+                        <div class="text-center py-4 px-3 rounded-3" style="background:var(--paper);border:1px dashed var(--border);">
+                            <i class="bi bi-journal-plus" style="font-size:2rem;color:var(--accent);opacity:.8;"></i>
+                            <p class="mt-2 mb-1 fw-bold" style="color:var(--ink);font-size:.92rem;">No Subjects Created Yet</p>
+                            <p class="mb-3 text-muted" style="font-size:.8rem;max-width:400px;margin-left:auto;margin-right:auto;">
+                                You haven't added any subjects yet. Create your study subjects first so you can plan daily tasks with them.
+                            </p>
+                            <a href="subjects.php" class="btn btn-accent btn-sm px-3 py-2 fw-semibold">
+                                <i class="bi bi-plus-circle me-1"></i>Add Your Subjects
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </form>
         </div>
     </div>
